@@ -25,16 +25,12 @@ kubectl get pods -n localstack
 
 ### **Deploy ByteFreezer Control with LocalStack**
 ```bash
-# Method 1: Using Ansible (Recommended)
+# Using Ansible (AWX Compatible)
 cd ansible
 ansible-playbook playbooks/kubernetes/deploy.yml \
   -e target_environment=development \
   -e enable_debug_logging=true \
   -e storage_enabled=false
-
-# Method 2: Using AWX Workflow (Enterprise)
-# Import: ansible/awx/localstack_workflow.yml
-# Run: "ByteFreezer Full Stack - LocalStack + Control Deployment"
 ```
 
 ### **Test Integration**
@@ -86,41 +82,22 @@ egress:
       port: 4510  # LocalStack admin port
 ```
 
-## 🎭 **AWX Integration**
+## 🎭 **AWX Compatibility**
 
-### **Full Stack Workflow**
-Complete deployment workflow with dependency management:
+This Ansible structure is fully compatible with AWX/Ansible Automation Platform:
 
-```yaml
-Workflow: "ByteFreezer Full Stack - LocalStack + Control Deployment"
-Steps:
-1. Deploy LocalStack → Wait for ready → Initialize AWS resources
-2. Deploy ByteFreezer Control → Verify integration → Setup monitoring
-3. Run integration tests → Notify success/failure
-```
+- **Standard playbooks** that can be imported as Job Templates
+- **Group variables** for environment-specific configuration
+- **Survey variables** support through `--extra-vars`
+- **Inventory-based** deployment targeting
 
-### **Survey Variables**
-AWX workflow supports these configuration options:
+### **AWX Job Template Variables**
+When creating AWX Job Templates, configure these survey variables:
 
 - **target_environment**: `development` | `staging` | `production`
 - **bytefreezer_control_version**: Container version (e.g., `latest`, `v1.0.0`)
-- **localstack_environment**: LocalStack config (`dev` | `prod`)
 - **storage_enabled**: Enable persistent storage for both services
 - **enable_debug_logging**: Debug mode for troubleshooting
-- **localstack_wait_time**: Seconds to wait for LocalStack readiness
-
-### **Development Auto-Deploy**
-Continuous deployment workflow for development:
-
-```yaml
-Workflow: "ByteFreezer Development - Auto LocalStack Deploy"
-Behavior:
-- Checks LocalStack health
-- Redeploys if unhealthy or missing
-- Updates ByteFreezer Control to latest
-- Runs smoke tests
-- Provides immediate feedback
-```
 
 ## 🧪 **Testing and Validation**
 

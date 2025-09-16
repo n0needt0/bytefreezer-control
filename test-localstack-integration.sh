@@ -121,14 +121,13 @@ if [ ! -f "ansible/playbooks/kubernetes/deploy.yml" ]; then
     exit 1
 fi
 
-# Deploy using Ansible (localhost execution)
+# Deploy using Ansible (AWX compatible execution)
 cd ansible
 ansible-playbook playbooks/kubernetes/deploy.yml \
     -e target_environment=development \
     -e enable_debug_logging=true \
     -e storage_enabled=false \
-    -e bytefreezer_control_version=latest \
-    --connection=local
+    -e bytefreezer_control_version=latest
 
 if [ $? -eq 0 ]; then
     print_success "ByteFreezer Control deployed successfully"

@@ -1,272 +1,43 @@
-# ByteFreezer Control - Ansible Deployment
+# ByteFreezer Control - Ansible Playbooks
 
-AWX-compatible Ansible automation for deploying ByteFreezer Control service on servers and VMs.
+Collection of Ansible playbooks for ByteFreezer Control deployment and management.
 
-## 🚀 **Quick Start**
+## 📁 **Available Playbooks**
 
-### **Local Installation (Binary)**
-```bash
-# Build the binary first
-./build_local.sh
+### **install.yml**
+Installs ByteFreezer Control from GitHub releases
+- Downloads and installs specified version
+- Creates systemd service
+- Configures logging and directories
 
-# Deploy locally
-cd ansible
-ansible-playbook playbooks/local_install.yml -e target_environment=development
-```
+### **local_install.yml**  
+Installs ByteFreezer Control from local binary
+- Uses binary from `ansible/playbooks/dist/`
+- Requires running `./build_local.sh` first
+- Ideal for development and testing
 
-### **Docker Installation**
-```bash
-cd ansible
-ansible-playbook playbooks/docker_install.yml -e target_environment=development
-```
+### **docker_install.yml**
+Installs ByteFreezer Control from Docker image
+- Extracts binary from container
+- Always gets latest image
+- Good for staging environments
 
-### **GitHub Release Installation**
-```bash
-cd ansible
-ansible-playbook playbooks/install.yml -e target_environment=production
-```
+### **remove.yml**
+Uninstalls ByteFreezer Control service
+- Stops and disables service
+- Removes binary and configuration
+- Optional data cleanup
 
-**Note:** For Kubernetes deployments, use the Helm chart in `/helm/` directory.
+## 📁 **Configuration**
 
-## 📁 **Structure**
+### **group_vars/all.yml**
+Contains all configuration variables including:
+- Server settings (API port, logging)
+- Service paths and directories  
+- Environment-specific overrides
+- Template variables
 
-```
-ansible/
-├── playbooks/
-│   ├── group_vars/all.yml    # Configuration variables
-│   ├── local_install.yml     # Install from local binary (AWX compatible)
-│   ├── docker_install.yml    # Install from Docker image (AWX compatible)
-│   ├── install.yml           # Install from GitHub release (AWX compatible)
-│   ├── remove.yml            # Uninstall service (AWX compatible)
-│   └── templates/            # Configuration templates
-│       ├── config.yaml.j2
-│       ├── bytefreezer-control.service.j2
-│       └── logrotate.j2
-└── README.md                 # This file
-```
-
-## ⚙️ **Configuration**
-
-### **Environment Variables**
-Override default configuration using host variables in `inventory.yml`:
-
-```yaml
-hosts:
-  my-server:
-    ansible_host: 192.168.1.100
-    bytefreezer_control_version: "v1.0.0"
-    config:
-      server:
-        api_port: 8082
-      database:
-        host: "postgres.internal"
-        password: "{{ vault_password }}"
-```
-
-### **Service Configuration**
-Key configuration options in `group_vars/all.yml`:
-
-- **API Port**: `config.server.api_port` (default: 8082)
-- **Database**: Full PostgreSQL configuration
-- **Ecosystem Services**: URLs for receiver, proxy, SOC, packer
-- **Authentication**: JWT secrets and admin users
-- **OpenTelemetry**: Observability configuration
-- **Rate Limiting**: Request throttling settings
-
-## 🎯 **Deployment Scenarios**
-
-### **1. Production Deployment**
-```bash
-# Deploy to production servers
-ansible-playbook -i inventory.yml playbooks/install.yml --limit production
-
-# Update configuration only
-ansible-playbook -i inventory.yml playbooks/local_install.yml --limit production --tags config
-```
-
-### **2. Staging Environment**
-```bash
-# Deploy latest version to staging
-ansible-playbook -i inventory.yml playbooks/docker_install.yml --limit staging
-```
-
-### **3. Development Setup**
-```bash
-# Local development with debug logging
-ansible-playbook -i inventory.yml playbooks/local_install.yml --limit development
-```
-
-### **4. Multiple Servers**
-```bash
-# Deploy to multiple hosts using inventory
-ansible-playbook playbooks/install.yml -i production_hosts.yml -e target_environment=production
-```
-
-## 🔧 **Service Management**
-
-### **Status and Control**
-```bash
-# Check service status
-sudo systemctl status bytefreezer-control
-
-# View logs
-sudo journalctl -u bytefreezer-control -f
-
-# Restart service
-sudo systemctl restart bytefreezer-control
-```
-
-### **Configuration Updates**
-```bash
-# Update configuration and restart
-ansible-playbook -i inventory.yml playbooks/local_install.yml --tags config
-
-# Validate configuration
-/usr/local/bin/bytefreezer-control --validate-config
-```
-
-## 🛡️ **Security**
-
-### **Secrets Management**
-Use Ansible Vault for sensitive data:
-
-```bash
-# Create vault file
-ansible-vault create secrets.yml
-
-# Edit vault
-ansible-vault edit secrets.yml
-
-# Deploy with vault
-ansible-playbook -i inventory.yml playbooks/install.yml --ask-vault-pass
-```
-
-### **Vault Variables**
-```yaml
-# secrets.yml
-vault_db_password_prod: "super-secure-password"
-vault_jwt_secret: "jwt-signing-secret"
-```
-
-## 📊 **Monitoring and Health**
-
-### **Health Endpoints**
-- **Health Check**: `http://server:8082/api/v2/health`
-- **Configuration**: `http://server:8082/api/v2/config`
-- **Service Status**: `http://server:8082/api/v2/services/status`
-
-### **Log Files**
-- **Application**: `/var/log/bytefreezer-control/bytefreezer-control.log`
-- **Errors**: `/var/log/bytefreezer-control/bytefreezer-control-error.log`
-- **System**: `journalctl -u bytefreezer-control`
-
-### **OpenTelemetry Integration**
-```yaml
-config:
-  otel:
-    enabled: true
-    endpoint: "http://otel-collector:4317"
-    service_name: "bytefreezer-control"
-```
-
-## 🔄 **Maintenance**
-
-### **Updates**
-```bash
-# Update to specific version
-ansible-playbook -i inventory.yml playbooks/install.yml -e bytefreezer_control_version=v1.1.0
-
-# Update from Docker (latest)
-ansible-playbook -i inventory.yml playbooks/docker_install.yml -e docker.force_pull=true
-```
-
-### **Backup**
-```bash
-# Backup configuration
-cp -r /etc/bytefreezer-control /backup/config-$(date +%Y%m%d)
-
-# Backup data (if using local database)
-pg_dump bytefreezer_control > /backup/control-db-$(date +%Y%m%d).sql
-```
-
-### **Removal**
-```bash
-# Remove service (preserve data)
-ansible-playbook -i inventory.yml playbooks/remove.yml
-
-# Remove everything including data
-ansible-playbook -i inventory.yml playbooks/remove.yml -e remove.data_dir=true
-```
-
-## 🎭 **Troubleshooting**
-
-### **Common Issues**
-
-**Service Won't Start**
-```bash
-# Check configuration
-/usr/local/bin/bytefreezer-control --validate-config
-
-# Check logs
-sudo journalctl -u bytefreezer-control --no-pager
-```
-
-**Database Connection Issues**
-```bash
-# Test database connectivity
-psql -h postgres.internal -U bytefreezer -d bytefreezer_control
-
-# Check network policies
-telnet postgres.internal 5432
-```
-
-**Ecosystem Service Communication**
-```bash
-# Test service endpoints
-curl http://receiver.internal:8080/api/v2/health
-curl http://proxy.internal:8088/api/v2/health
-```
-
-## 🏗️ **Development**
-
-### **Local Testing**
-```bash
-# Syntax check
-ansible-playbook playbooks/local_install.yml --syntax-check
-
-# Dry run
-ansible-playbook -i inventory.yml playbooks/local_install.yml --check --diff
-
-# Run with verbose output
-ansible-playbook -i inventory.yml playbooks/local_install.yml -vvv
-```
-
-### **Custom Configurations**
-Create environment-specific variable files:
-```bash
-# group_vars/production.yml
-config:
-  logging:
-    level: "warn"
-  rate_limit:
-    requests_per_minute: 1000
-```
-
-## 🎭 **AWX Integration**
-
-### **Job Templates with Surveys**
-All playbooks are AWX-compatible with survey variables:
-
-- `target_environment`: Choose development/staging/production  
-- `enable_debug_logging`: Toggle debug mode
-- `bytefreezer_control_version`: Specify deployment version
-
-### **AWX Setup**
-1. Import playbooks as Job Templates in AWX
-2. Configure inventory with your servers
-3. Add survey variables for user-friendly deployment
-4. Set up credentials for server access
-
-This provides enterprise-grade deployment automation for ByteFreezer Control on traditional infrastructure! 🚀
-
-**Note:** For Kubernetes workflows, use the Helm chart deployment process instead.
+### **templates/**
+- **config.yaml.j2** - Main configuration template
+- **bytefreezer-control.service.j2** - Systemd service template  
+- **logrotate.j2** - Log rotation configuration

@@ -24,13 +24,21 @@ kubectl get pods -n localstack
 ```
 
 ### **Deploy ByteFreezer Control with LocalStack**
+
+**Option 1: Ansible (AWX Compatible) - for server/VM deployment**
 ```bash
-# Using Ansible (AWX Compatible)
 cd ansible
-ansible-playbook playbooks/kubernetes/deploy.yml \
+ansible-playbook playbooks/install.yml \
   -e target_environment=development \
-  -e enable_debug_logging=true \
-  -e storage_enabled=false
+  -e enable_debug_logging=true
+```
+
+**Option 2: Helm (Manual K3s) - for Kubernetes deployment**
+```bash
+helm upgrade --install bytefreezer-control ./helm/bytefreezer-control \
+  --set environment=development \
+  --set localstack.enabled=true \
+  --set persistence.enabled=false
 ```
 
 ### **Test Integration**
@@ -82,22 +90,31 @@ egress:
       port: 4510  # LocalStack admin port
 ```
 
-## 🎭 **AWX Compatibility**
+## 🎭 **Deployment Options**
 
-This Ansible structure is fully compatible with AWX/Ansible Automation Platform:
-
-- **Standard playbooks** that can be imported as Job Templates
+### **Ansible (AWX Compatible)**
+For traditional server/VM deployments:
+- **Standard playbooks** that can be imported as AWX Job Templates
 - **Group variables** for environment-specific configuration
 - **Survey variables** support through `--extra-vars`
 - **Inventory-based** deployment targeting
 
-### **AWX Job Template Variables**
-When creating AWX Job Templates, configure these survey variables:
-
+**AWX Job Template Variables:**
 - **target_environment**: `development` | `staging` | `production`
-- **bytefreezer_control_version**: Container version (e.g., `latest`, `v1.0.0`)
-- **storage_enabled**: Enable persistent storage for both services
 - **enable_debug_logging**: Debug mode for troubleshooting
+
+### **Helm (Manual K3s)**
+For Kubernetes deployments:
+- **Production-ready** Helm chart with all necessary resources
+- **LocalStack integration** with automatic service discovery
+- **Persistent storage** options for data retention
+- **Network policies** for secure communication
+
+**Key Features:**
+- Configurable via values.yaml or --set flags
+- Built-in health checks and readiness probes
+- Resource limits and autoscaling support
+- Separate from AWX workflow for manual control
 
 ## 🧪 **Testing and Validation**
 

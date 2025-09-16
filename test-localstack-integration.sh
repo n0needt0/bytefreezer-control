@@ -112,22 +112,22 @@ if ! kubectl get namespace "$CONTROL_NAMESPACE" &> /dev/null; then
     kubectl create namespace "$CONTROL_NAMESPACE"
 fi
 
-# Deploy ByteFreezer Control using our Ansible playbook
-print_status "Deploying ByteFreezer Control with LocalStack integration..."
+# Deploy ByteFreezer Control using Helm
+print_status "Deploying ByteFreezer Control with LocalStack integration using Helm..."
 
 # Check if we're in the right directory
-if [ ! -f "ansible/playbooks/kubernetes/deploy.yml" ]; then
-    print_error "Cannot find Ansible playbook. Run this script from bytefreezer-control root directory"
+if [ ! -f "helm/bytefreezer-control/Chart.yaml" ]; then
+    print_error "Cannot find Helm chart. Run this script from bytefreezer-control root directory"
     exit 1
 fi
 
-# Deploy using Ansible (AWX compatible execution)
-cd ansible
-ansible-playbook playbooks/kubernetes/deploy.yml \
-    -e target_environment=development \
-    -e enable_debug_logging=true \
-    -e storage_enabled=false \
-    -e bytefreezer_control_version=latest
+# Deploy using Helm (manual K3s setup)
+helm upgrade --install bytefreezer-control ./helm/bytefreezer-control \
+    --set environment=development \
+    --set config.logging.level=debug \
+    --set persistence.enabled=false \
+    --set image.tag=latest \
+    --set localstack.enabled=true
 
 if [ $? -eq 0 ]; then
     print_success "ByteFreezer Control deployed successfully"
@@ -136,7 +136,7 @@ else
     exit 1
 fi
 
-cd ..
+# Stay in root directory for helm
 
 print_status "Step 6: Waiting for ByteFreezer Control to be ready..."
 

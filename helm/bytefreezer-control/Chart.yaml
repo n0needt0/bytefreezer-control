@@ -1,0 +1,19 @@
+apiVersion: v2
+name: bytefreezer-control
+description: ByteFreezer Control - Central Management and Coordination Service
+type: application
+version: 0.1.0
+appVersion: "latest"
+home: https://github.com/n0needt0/bytefreezer-control
+sources:
+  - https://github.com/n0needt0/bytefreezer-control
+maintainers:
+  - name: ByteFreezer Team
+    email: noreply@bytefreezer.io
+keywords:
+  - bytefreezer
+  - control
+  - management
+  - coordination
+  - aws
+  - localstack

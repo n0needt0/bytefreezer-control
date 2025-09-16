@@ -1,6 +1,6 @@
-# ByteFreezer Control - AWX/Ansible Deployment
+# ByteFreezer Control - Ansible Deployment
 
-Complete AWX/Ansible Tower automation for deploying ByteFreezer Control service across different environments with enterprise-grade workflows and survey integration.
+AWX-compatible Ansible automation for deploying ByteFreezer Control service on servers and VMs.
 
 ## 🚀 **Quick Start**
 
@@ -11,51 +11,37 @@ Complete AWX/Ansible Tower automation for deploying ByteFreezer Control service 
 
 # Deploy locally
 cd ansible
-ansible-playbook -i inventory.yml playbooks/local_install.yml --limit localhost
+ansible-playbook playbooks/local_install.yml -e target_environment=development
 ```
 
 ### **Docker Installation**
 ```bash
 cd ansible
-ansible-playbook -i inventory.yml playbooks/docker_install.yml --limit localhost
+ansible-playbook playbooks/docker_install.yml -e target_environment=development
 ```
 
 ### **GitHub Release Installation**
 ```bash
 cd ansible
-ansible-playbook -i inventory.yml playbooks/install.yml --limit localhost
+ansible-playbook playbooks/install.yml -e target_environment=production
 ```
 
-### **Kubernetes Deployment**
-```bash
-cd ansible
-ansible-playbook -i inventory.yml playbooks/kubernetes/deploy.yml
-```
+**Note:** For Kubernetes deployments, use the Helm chart in `/helm/` directory.
 
 ## 📁 **Structure**
 
 ```
 ansible/
-├── inventory.yml              # AWX-compatible host definitions
-├── awx/                       # AWX/Tower specific configurations
-│   ├── job_templates.yml      # AWX job template definitions
-│   ├── workflow_templates.yml # AWX workflow configurations
-│   ├── inventory_sources.yml  # Smart inventory sources
-│   └── README.md             # AWX setup and usage guide
 ├── playbooks/
-│   ├── group_vars/all.yml    # AWX survey variables and configuration
+│   ├── group_vars/all.yml    # Configuration variables
 │   ├── local_install.yml     # Install from local binary (AWX compatible)
 │   ├── docker_install.yml    # Install from Docker image (AWX compatible)
 │   ├── install.yml           # Install from GitHub release (AWX compatible)
 │   ├── remove.yml            # Uninstall service (AWX compatible)
-│   ├── templates/            # Configuration templates
-│   │   ├── config.yaml.j2
-│   │   ├── bytefreezer-control.service.j2
-│   │   └── logrotate.j2
-│   └── kubernetes/           # Kubernetes deployment
-│       ├── group_vars/all.yml
-│       ├── deploy.yml        # K8s deploy (AWX compatible)
-│       └── remove.yml        # K8s remove (AWX compatible)
+│   └── templates/            # Configuration templates
+│       ├── config.yaml.j2
+│       ├── bytefreezer-control.service.j2
+│       └── logrotate.j2
 └── README.md                 # This file
 ```
 
@@ -110,13 +96,10 @@ ansible-playbook -i inventory.yml playbooks/docker_install.yml --limit staging
 ansible-playbook -i inventory.yml playbooks/local_install.yml --limit development
 ```
 
-### **4. Kubernetes Cluster**
+### **4. Multiple Servers**
 ```bash
-# Deploy to K8s with persistent storage
-ansible-playbook playbooks/kubernetes/deploy.yml -e storage.enabled=true
-
-# Remove from K8s (preserve data)
-ansible-playbook playbooks/kubernetes/remove.yml
+# Deploy to multiple hosts using inventory
+ansible-playbook playbooks/install.yml -i production_hosts.yml -e target_environment=production
 ```
 
 ## 🔧 **Service Management**
@@ -274,24 +257,16 @@ config:
 ### **Job Templates with Surveys**
 All playbooks are AWX-compatible with survey variables:
 
-- `target_environment`: Choose development/staging/production
-- `force_reinstall`: Override existing installations
+- `target_environment`: Choose development/staging/production  
 - `enable_debug_logging`: Toggle debug mode
 - `bytefreezer_control_version`: Specify deployment version
 
-### **Workflow Templates**
-Enterprise workflows available:
-- **Full Production Deployment** - Multi-stage with approval gates
-- **Staging Deployment** - Automated testing integration
-- **Emergency Rollback** - Cross-environment rollback capability
-- **Kubernetes Multi-Environment** - K8s deployment with approvals
+### **AWX Setup**
+1. Import playbooks as Job Templates in AWX
+2. Configure inventory with your servers
+3. Add survey variables for user-friendly deployment
+4. Set up credentials for server access
 
-### **Smart Inventories**
-Dynamic inventory management:
-- Environment-based host filtering
-- Service-type grouping
-- Automatic host discovery
+This provides enterprise-grade deployment automation for ByteFreezer Control on traditional infrastructure! 🚀
 
-**Setup:** See `ansible/awx/README.md` for complete AWX integration guide.
-
-This AWX-compatible setup provides enterprise-grade deployment automation for ByteFreezer Control with survey-driven workflows, approval processes, smart inventories, and comprehensive monitoring capabilities! 🚀
+**Note:** For Kubernetes workflows, use the Helm chart deployment process instead.

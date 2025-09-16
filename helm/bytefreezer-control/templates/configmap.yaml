@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bytefreezer-control.fullname" . }}-config
+  labels:
+    {{- include "bytefreezer-control.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    server:
+      listen_address: {{ .Values.config.server.listen_address }}
+      api_version: {{ .Values.config.server.api_version }}
+    
+    logging:
+      level: {{ .Values.config.logging.level }}
+    
+    tenant_id: {{ .Values.config.tenant_id }}
+    bearer_token: {{ .Values.config.bearer_token }}

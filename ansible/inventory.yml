@@ -1,0 +1,120 @@
+---
+# ByteFreezer Control AWX/Tower Compatible Inventory
+# 
+# This inventory file defines the target hosts for deploying ByteFreezer Control.
+# Designed for AWX/Tower with smart inventory and survey integration.
+# Update the host information according to your environment.
+
+all:
+  children:
+    bytefreezer_control:
+      hosts:
+        # Production servers
+        control-prod-01:
+          ansible_host: 192.168.1.100
+          ansible_user: admin
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          bytefreezer_control_version: "v1.0.0"
+          
+        control-prod-02:
+          ansible_host: 192.168.1.101
+          ansible_user: admin
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          bytefreezer_control_version: "v1.0.0"
+          
+        # Staging servers
+        control-staging-01:
+          ansible_host: 192.168.1.110
+          ansible_user: admin
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          bytefreezer_control_version: "latest"
+          
+        # Development/local servers
+        localhost:
+          ansible_connection: local
+          ansible_user: "{{ ansible_env.USER }}"
+          bytefreezer_control_version: "latest"
+          
+      vars:
+        # Global variables for all ByteFreezer Control hosts
+        ansible_python_interpreter: /usr/bin/python3
+        
+        # AWX-compatible host facts
+        awx_project: "bytefreezer-control"
+        awx_service_type: "control-plane"
+        
+        # Environment-specific overrides
+        config:
+          database:
+            # Production database settings
+            host: "postgres-cluster.internal"
+            database: "bytefreezer_control_prod"
+            username: "bytefreezer_prod"
+            password: "{{ vault_db_password_prod }}"
+            
+          auth:
+            jwt_secret: "{{ vault_jwt_secret }}"
+            
+          services:
+            # Production service URLs
+            receiver:
+              url: "http://receiver-lb.internal:8080"
+            proxy:
+              url: "http://proxy-lb.internal:8088"
+            soc:
+              url: "http://soc-lb.internal:8089"
+            packer:
+              url: "http://packer-lb.internal:8090"
+
+    # Environment-specific groups
+    production:
+      hosts:
+        control-prod-01:
+        control-prod-02:
+      vars:
+        config:
+          logging:
+            level: "warn"
+          housekeeping:
+            interval_seconds: 300
+          rate_limit:
+            requests_per_minute: 1000
+            
+    staging:
+      hosts:
+        control-staging-01:
+      vars:
+        config:
+          logging:
+            level: "info"
+          database:
+            host: "postgres-staging.internal"
+            database: "bytefreezer_control_staging"
+            username: "bytefreezer_staging"
+            password: "{{ vault_db_password_staging }}"
+            
+    development:
+      hosts:
+        localhost:
+      vars:
+        config:
+          logging:
+            level: "debug"
+          database:
+            host: "localhost"
+            database: "bytefreezer_control_dev"
+            username: "bytefreezer_dev"
+            password: "dev_password"
+          dev: true
+          auth:
+            jwt_secret: "dev-secret-key"
+          services:
+            # Local development URLs
+            receiver:
+              url: "http://localhost:8080"
+            proxy:
+              url: "http://localhost:8088"
+            soc:
+              url: "http://localhost:8089"
+            packer:
+              url: "http://localhost:8090"

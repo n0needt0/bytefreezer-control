@@ -1,0 +1,101 @@
+---
+# AWX Job Template: ByteFreezer Control - Local Install
+# Description: Install ByteFreezer Control service from local binary
+# Survey Variables: force_reinstall, enable_debug_logging, target_environment
+- name: Install and configure ByteFreezer Control service
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  pre_tasks:
+    - name: Check if service already exists
+      ansible.builtin.stat:
+        path: "{{ paths.service_path }}"
+      register: service_exists
+
+    - name: Fail if service already installed
+      fail:
+        msg: "ByteFreezer Control service is already installed. Use remove playbook first or set force_reinstall=true."
+      when: service_exists.stat.exists and not force_reinstall
+
+  tasks:
+    - name: Stop existing service if force reinstalling
+      ansible.builtin.systemd:
+        name: "{{ service.name }}"
+        state: stopped
+      when: service_exists.stat.exists and force_reinstall
+      ignore_errors: yes
+      
+    - name: Copy binary to destination
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/dist/bytefreezer-control"
+        dest: "{{ paths.binary_path }}"
+        owner: root
+        group: root
+        mode: '0755'
+ 
+    - name: Ensure config directory exists
+      ansible.builtin.file:
+        path: "{{ paths.config_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Ensure log directory exists
+      ansible.builtin.file:
+        path: "{{ paths.log_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      
+    - name: Ensure data directory exists
+      ansible.builtin.file:
+        path: "{{ paths.data_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      
+    - name: Generate configuration file
+      ansible.builtin.template:
+        src: templates/config.yaml.j2
+        dest: "{{ paths.config_path }}"
+        owner: root
+        group: root
+        mode: '0644'
+      
+    - name: Install logrotate configuration
+      ansible.builtin.template:
+        src: templates/logrotate.j2
+        dest: "{{ paths.logrotate_path }}"
+        owner: root
+        group: root
+        mode: '0644'
+      
+    - name: Create systemd service file
+      ansible.builtin.template:
+        src: templates/bytefreezer-control.service.j2
+        dest: "{{ paths.service_path }}"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Enable and start service
+      ansible.builtin.systemd:
+        name: "{{ service.name }}"
+        enabled: yes
+        state: started
+        daemon_reload: yes
+
+  post_tasks:
+    - name: Display installation status
+      debug:
+        msg:
+          - "ByteFreezer Control installation completed!"
+          - "Binary: {{ paths.binary_path }}"
+          - "Config: {{ paths.config_path }}"
+          - "Logs: {{ paths.log_dir }}"
+          - "Data: {{ paths.data_dir }}"
+          - "Service: systemctl status {{ service.name }}"

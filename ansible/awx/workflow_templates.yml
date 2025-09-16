@@ -1,0 +1,350 @@
+# AWX Workflow Templates Configuration
+# Import this file into AWX to create automated deployment workflows
+
+---
+- name: "ByteFreezer Control - Full Production Deployment"
+  description: "Complete production deployment workflow with validation and rollback"
+  organization: "ByteFreezer"
+  survey_enabled: true
+  ask_variables_on_launch: true
+  survey_spec:
+    name: "Production Deployment Survey"
+    description: "Configure production deployment parameters"
+    spec:
+    - question_name: "Deployment Version"
+      question_description: "Version to deploy (e.g., v1.0.0)"
+      required: true
+      type: "text"
+      variable: "bytefreezer_control_version"
+      default: "latest"
+      
+    - question_name: "Deployment Method"
+      question_description: "Choose deployment method"
+      required: true
+      type: "multiplechoice"
+      variable: "deployment_method"
+      choices:
+        - "github_release"
+        - "docker_image"
+      default: "github_release"
+      
+    - question_name: "Enable Rollback on Failure"
+      question_description: "Automatically rollback if deployment fails"
+      required: false
+      type: "boolean"
+      variable: "enable_rollback"
+      default: true
+      
+  workflow_nodes:
+  - identifier: "pre_deployment_validation"
+    unified_job_template: "ByteFreezer Control - Health Check"
+    inventory: "ByteFreezer Control - Production"
+    success_nodes:
+      - "deployment"
+    failure_nodes:
+      - "notify_failure"
+      
+  - identifier: "deployment"
+    unified_job_template: "{{ 'ByteFreezer Control - GitHub Release Install' if deployment_method == 'github_release' else 'ByteFreezer Control - Docker Install' }}"
+    inventory: "ByteFreezer Control - Production"
+    extra_vars:
+      target_environment: "production"
+      bytefreezer_control_version: "{{ bytefreezer_control_version }}"
+      force_reinstall: true
+    success_nodes:
+      - "post_deployment_validation"
+    failure_nodes:
+      - "rollback" if enable_rollback else "notify_failure"
+      
+  - identifier: "post_deployment_validation"
+    unified_job_template: "ByteFreezer Control - Health Check"
+    inventory: "ByteFreezer Control - Production"
+    success_nodes:
+      - "notify_success"
+    failure_nodes:
+      - "rollback" if enable_rollback else "notify_failure"
+      
+  - identifier: "rollback"
+    unified_job_template: "ByteFreezer Control - Rollback"
+    inventory: "ByteFreezer Control - Production"
+    always_nodes:
+      - "notify_rollback"
+      
+  - identifier: "notify_success"
+    unified_job_template: "ByteFreezer Control - Notify Success"
+    
+  - identifier: "notify_failure"
+    unified_job_template: "ByteFreezer Control - Notify Failure"
+    
+  - identifier: "notify_rollback"
+    unified_job_template: "ByteFreezer Control - Notify Rollback"
+
+- name: "ByteFreezer Control - Staging Deployment"
+  description: "Staging environment deployment workflow"
+  organization: "ByteFreezer"
+  survey_enabled: true
+  survey_spec:
+    name: "Staging Deployment Survey"
+    description: "Configure staging deployment parameters"
+    spec:
+    - question_name: "Deployment Version"
+      question_description: "Version to deploy (e.g., v1.0.0 or latest)"
+      required: true
+      type: "text"
+      variable: "bytefreezer_control_version"
+      default: "latest"
+      
+    - question_name: "Run Integration Tests"
+      question_description: "Run integration tests after deployment"
+      required: false
+      type: "boolean"
+      variable: "run_integration_tests"
+      default: true
+      
+  workflow_nodes:
+  - identifier: "staging_deployment"
+    unified_job_template: "ByteFreezer Control - Docker Install"
+    inventory: "ByteFreezer Control - Staging"
+    extra_vars:
+      target_environment: "staging"
+      bytefreezer_control_version: "{{ bytefreezer_control_version }}"
+      force_reinstall: true
+    success_nodes:
+      - "integration_tests" if run_integration_tests else "notify_success"
+    failure_nodes:
+      - "notify_failure"
+      
+  - identifier: "integration_tests"
+    unified_job_template: "ByteFreezer Control - Integration Tests"
+    inventory: "ByteFreezer Control - Staging"
+    success_nodes:
+      - "notify_success"
+    failure_nodes:
+      - "notify_test_failure"
+      
+  - identifier: "notify_success"
+    unified_job_template: "ByteFreezer Control - Notify Success"
+    
+  - identifier: "notify_failure"
+    unified_job_template: "ByteFreezer Control - Notify Failure"
+    
+  - identifier: "notify_test_failure"
+    unified_job_template: "ByteFreezer Control - Notify Test Failure"
+
+- name: "ByteFreezer Control - Development Auto-Deploy"
+  description: "Continuous deployment workflow for development environment"
+  organization: "ByteFreezer"
+  survey_enabled: false
+  extra_vars:
+    target_environment: "development"
+    bytefreezer_control_version: "latest"
+    enable_debug_logging: true
+    force_reinstall: true
+    
+  workflow_nodes:
+  - identifier: "dev_deployment"
+    unified_job_template: "ByteFreezer Control - Local Install"
+    inventory: "ByteFreezer Control - Development"
+    success_nodes:
+      - "update_monitoring"
+    failure_nodes:
+      - "notify_dev_failure"
+      
+  - identifier: "update_monitoring"
+    unified_job_template: "ByteFreezer Control - Update Monitoring"
+    inventory: "ByteFreezer Control - Development"
+    always_nodes:
+      - "notify_dev_success"
+      
+  - identifier: "notify_dev_success"
+    unified_job_template: "ByteFreezer Control - Notify Dev Success"
+    
+  - identifier: "notify_dev_failure"
+    unified_job_template: "ByteFreezer Control - Notify Dev Failure"
+
+- name: "ByteFreezer Control - Kubernetes Multi-Environment Deploy"
+  description: "Deploy to multiple Kubernetes environments with approval gates"
+  organization: "ByteFreezer"
+  survey_enabled: true
+  survey_spec:
+    name: "Kubernetes Multi-Environment Survey"
+    description: "Configure multi-environment Kubernetes deployment"
+    spec:
+    - question_name: "Container Version"
+      question_description: "Container image version to deploy"
+      required: true
+      type: "text"
+      variable: "bytefreezer_control_version"
+      default: "latest"
+      
+    - question_name: "Deploy to Staging"
+      question_description: "Deploy to staging environment"
+      required: false
+      type: "boolean"
+      variable: "deploy_staging"
+      default: true
+      
+    - question_name: "Deploy to Production"
+      question_description: "Deploy to production environment (requires approval)"
+      required: false
+      type: "boolean"
+      variable: "deploy_production"
+      default: false
+      
+    - question_name: "Enable Persistent Storage"
+      question_description: "Enable persistent storage for data"
+      required: false
+      type: "boolean"
+      variable: "storage_enabled"
+      default: false
+      
+  workflow_nodes:
+  - identifier: "k8s_dev_deploy"
+    unified_job_template: "ByteFreezer Control - Kubernetes Deploy"
+    inventory: "Kubernetes Development"
+    extra_vars:
+      target_environment: "development"
+      bytefreezer_control_version: "{{ bytefreezer_control_version }}"
+      storage_enabled: "{{ storage_enabled }}"
+    success_nodes:
+      - "k8s_staging_deploy" if deploy_staging else "notify_dev_complete"
+    failure_nodes:
+      - "notify_k8s_failure"
+      
+  - identifier: "k8s_staging_deploy"
+    unified_job_template: "ByteFreezer Control - Kubernetes Deploy"
+    inventory: "Kubernetes Staging"
+    extra_vars:
+      target_environment: "staging"
+      bytefreezer_control_version: "{{ bytefreezer_control_version }}"
+      storage_enabled: "{{ storage_enabled }}"
+    success_nodes:
+      - "staging_approval" if deploy_production else "notify_staging_complete"
+    failure_nodes:
+      - "notify_k8s_failure"
+      
+  - identifier: "staging_approval"
+    unified_job_template: "ByteFreezer Control - Production Approval"
+    approval_node: true
+    success_nodes:
+      - "k8s_prod_deploy"
+    failure_nodes:
+      - "notify_approval_denied"
+      
+  - identifier: "k8s_prod_deploy"
+    unified_job_template: "ByteFreezer Control - Kubernetes Deploy"
+    inventory: "Kubernetes Production"
+    extra_vars:
+      target_environment: "production"
+      bytefreezer_control_version: "{{ bytefreezer_control_version }}"
+      storage_enabled: "{{ storage_enabled }}"
+    success_nodes:
+      - "notify_prod_complete"
+    failure_nodes:
+      - "k8s_prod_rollback"
+      
+  - identifier: "k8s_prod_rollback"
+    unified_job_template: "ByteFreezer Control - Kubernetes Rollback"
+    inventory: "Kubernetes Production"
+    always_nodes:
+      - "notify_prod_rollback"
+      
+  - identifier: "notify_dev_complete"
+    unified_job_template: "ByteFreezer Control - Notify K8s Dev Complete"
+    
+  - identifier: "notify_staging_complete"
+    unified_job_template: "ByteFreezer Control - Notify K8s Staging Complete"
+    
+  - identifier: "notify_prod_complete"
+    unified_job_template: "ByteFreezer Control - Notify K8s Prod Complete"
+    
+  - identifier: "notify_approval_denied"
+    unified_job_template: "ByteFreezer Control - Notify Approval Denied"
+    
+  - identifier: "notify_prod_rollback"
+    unified_job_template: "ByteFreezer Control - Notify K8s Prod Rollback"
+    
+  - identifier: "notify_k8s_failure"
+    unified_job_template: "ByteFreezer Control - Notify K8s Failure"
+
+- name: "ByteFreezer Control - Emergency Rollback"
+  description: "Emergency rollback workflow for all environments"
+  organization: "ByteFreezer"
+  survey_enabled: true
+  survey_spec:
+    name: "Emergency Rollback Survey"
+    description: "Configure emergency rollback parameters"
+    spec:
+    - question_name: "Target Environment"
+      question_description: "Environment to rollback"
+      required: true
+      type: "multiplechoice"
+      variable: "rollback_environment"
+      choices:
+        - "development"
+        - "staging"
+        - "production"
+        - "all"
+      default: "production"
+      
+    - question_name: "Rollback Version"
+      question_description: "Version to rollback to"
+      required: true
+      type: "text"
+      variable: "rollback_version"
+      
+    - question_name: "Confirm Emergency Rollback"
+      question_description: "Type 'CONFIRM' to proceed with emergency rollback"
+      required: true
+      type: "text"
+      variable: "emergency_confirmation"
+      
+  workflow_nodes:
+  - identifier: "validate_confirmation"
+    unified_job_template: "ByteFreezer Control - Validate Emergency"
+    success_nodes:
+      - "stop_services"
+    failure_nodes:
+      - "notify_invalid_confirmation"
+      
+  - identifier: "stop_services"
+    unified_job_template: "ByteFreezer Control - Emergency Stop"
+    inventory: "{{ 'ByteFreezer Control - All Environments' if rollback_environment == 'all' else 'ByteFreezer Control - ' + rollback_environment|title }}"
+    success_nodes:
+      - "rollback_deployment"
+    failure_nodes:
+      - "notify_stop_failure"
+      
+  - identifier: "rollback_deployment"
+    unified_job_template: "ByteFreezer Control - GitHub Release Install"
+    inventory: "{{ 'ByteFreezer Control - All Environments' if rollback_environment == 'all' else 'ByteFreezer Control - ' + rollback_environment|title }}"
+    extra_vars:
+      bytefreezer_control_version: "{{ rollback_version }}"
+      force_reinstall: true
+    success_nodes:
+      - "verify_rollback"
+    failure_nodes:
+      - "notify_rollback_failure"
+      
+  - identifier: "verify_rollback"
+    unified_job_template: "ByteFreezer Control - Health Check"
+    inventory: "{{ 'ByteFreezer Control - All Environments' if rollback_environment == 'all' else 'ByteFreezer Control - ' + rollback_environment|title }}"
+    success_nodes:
+      - "notify_rollback_success"
+    failure_nodes:
+      - "notify_rollback_verification_failure"
+      
+  - identifier: "notify_rollback_success"
+    unified_job_template: "ByteFreezer Control - Notify Emergency Rollback Success"
+    
+  - identifier: "notify_invalid_confirmation"
+    unified_job_template: "ByteFreezer Control - Notify Invalid Confirmation"
+    
+  - identifier: "notify_stop_failure"
+    unified_job_template: "ByteFreezer Control - Notify Stop Failure"
+    
+  - identifier: "notify_rollback_failure"
+    unified_job_template: "ByteFreezer Control - Notify Rollback Failure"
+    
+  - identifier: "notify_rollback_verification_failure"
+    unified_job_template: "ByteFreezer Control - Notify Rollback Verification Failure"

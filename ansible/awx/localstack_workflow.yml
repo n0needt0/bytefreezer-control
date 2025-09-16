@@ -1,0 +1,360 @@
+# AWX Workflow Template - ByteFreezer Control + LocalStack Integration
+# Complete deployment workflow for ByteFreezer Control with LocalStack dependency
+
+---
+- name: "ByteFreezer Full Stack - LocalStack + Control Deployment"
+  description: "Deploy LocalStack first, then ByteFreezer Control with automatic service discovery"
+  organization: "ByteFreezer"
+  survey_enabled: true
+  ask_variables_on_launch: true
+  survey_spec:
+    name: "ByteFreezer Full Stack Deployment Survey"
+    description: "Configure full stack deployment with LocalStack integration"
+    spec:
+    - question_name: "Target Environment"
+      question_description: "Select the target environment for deployment"
+      required: true
+      type: "multiplechoice"
+      variable: "target_environment"
+      choices:
+        - "development"
+        - "staging"
+        - "production"
+      default: "development"
+      
+    - question_name: "ByteFreezer Control Version"
+      question_description: "Container image version for ByteFreezer Control"
+      required: true
+      type: "text"
+      variable: "bytefreezer_control_version"
+      default: "latest"
+      
+    - question_name: "LocalStack Environment"
+      question_description: "LocalStack deployment environment (dev/prod configuration)"
+      required: true
+      type: "multiplechoice"
+      variable: "localstack_environment"
+      choices:
+        - "dev"
+        - "prod"
+      default: "dev"
+      
+    - question_name: "Enable Persistent Storage"
+      question_description: "Enable persistent storage for both LocalStack and Control data"
+      required: false
+      type: "boolean"
+      variable: "storage_enabled"
+      default: true
+      
+    - question_name: "Enable Debug Logging"
+      question_description: "Enable debug level logging for troubleshooting"
+      required: false
+      type: "boolean"
+      variable: "enable_debug_logging"
+      default: false
+      
+    - question_name: "Wait for LocalStack Ready"
+      question_description: "Wait time (seconds) for LocalStack to be ready before deploying Control"
+      required: false
+      type: "integer"
+      variable: "localstack_wait_time"
+      default: 60
+
+  workflow_nodes:
+  # Step 1: Deploy LocalStack first
+  - identifier: "deploy_localstack"
+    unified_job_template: "LocalStack - Helm Deploy"
+    inventory: "Kubernetes {{ target_environment|title }}"
+    extra_vars:
+      environment: "{{ localstack_environment }}"
+      persistence_enabled: "{{ storage_enabled }}"
+      debug_enabled: "{{ enable_debug_logging }}"
+    success_nodes:
+      - "wait_localstack_ready"
+    failure_nodes:
+      - "notify_localstack_failure"
+      
+  # Step 2: Wait for LocalStack to be fully ready
+  - identifier: "wait_localstack_ready"
+    unified_job_template: "LocalStack - Health Check"
+    inventory: "Kubernetes {{ target_environment|title }}"
+    extra_vars:
+      wait_timeout: "{{ localstack_wait_time }}"
+    success_nodes:
+      - "init_aws_resources"
+    failure_nodes:
+      - "localstack_health_failure"
+      
+  # Step 3: Initialize AWS resources in LocalStack
+  - identifier: "init_aws_resources"
+    unified_job_template: "LocalStack - Initialize Resources"
+    inventory: "Kubernetes {{ target_environment|title }}"
+    extra_vars:
+      create_default_buckets: true
+      create_default_queues: true
+      setup_iam_policies: true
+    success_nodes:
+      - "deploy_control"
+    failure_nodes:
+      - "aws_init_failure"
+      
+  # Step 4: Deploy ByteFreezer Control with LocalStack integration
+  - identifier: "deploy_control"
+    unified_job_template: "ByteFreezer Control - Kubernetes Deploy"
+    inventory: "Kubernetes {{ target_environment|title }}"
+    extra_vars:
+      target_environment: "{{ target_environment }}"
+      bytefreezer_control_version: "{{ bytefreezer_control_version }}"
+      storage_enabled: "{{ storage_enabled }}"
+      enable_debug_logging: "{{ enable_debug_logging }}"
+      localstack_integration: true
+      localstack_namespace: "localstack"
+    success_nodes:
+      - "verify_integration"
+    failure_nodes:
+      - "control_deploy_failure"
+      
+  # Step 5: Verify LocalStack + Control integration
+  - identifier: "verify_integration"
+    unified_job_template: "ByteFreezer Control - Verify LocalStack Integration"
+    inventory: "Kubernetes {{ target_environment|title }}"
+    extra_vars:
+      test_aws_connectivity: true
+      test_service_discovery: true
+      verify_health_endpoints: true
+    success_nodes:
+      - "setup_monitoring"
+    failure_nodes:
+      - "integration_verification_failure"
+      
+  # Step 6: Setup monitoring and observability
+  - identifier: "setup_monitoring"
+    unified_job_template: "ByteFreezer Control - Setup Monitoring"
+    inventory: "Kubernetes {{ target_environment|title }}"
+    extra_vars:
+      enable_localstack_metrics: true
+      enable_control_metrics: true
+      setup_dashboards: true
+    success_nodes:
+      - "notify_success"
+    failure_nodes:
+      - "monitoring_setup_failure"
+      
+  # Success notification
+  - identifier: "notify_success"
+    unified_job_template: "ByteFreezer Full Stack - Notify Success"
+    
+  # Failure handlers
+  - identifier: "notify_localstack_failure"
+    unified_job_template: "ByteFreezer Full Stack - Notify LocalStack Failure"
+    
+  - identifier: "localstack_health_failure"
+    unified_job_template: "ByteFreezer Full Stack - Notify LocalStack Health Failure"
+    
+  - identifier: "aws_init_failure"
+    unified_job_template: "ByteFreezer Full Stack - Notify AWS Init Failure"
+    
+  - identifier: "control_deploy_failure"
+    unified_job_template: "ByteFreezer Full Stack - Notify Control Deploy Failure"
+    always_nodes:
+      - "cleanup_on_failure"
+    
+  - identifier: "integration_verification_failure"
+    unified_job_template: "ByteFreezer Full Stack - Notify Integration Failure"
+    always_nodes:
+      - "cleanup_on_failure"
+      
+  - identifier: "monitoring_setup_failure"
+    unified_job_template: "ByteFreezer Full Stack - Notify Monitoring Failure"
+    # Continue despite monitoring failure
+    always_nodes:
+      - "notify_partial_success"
+      
+  - identifier: "cleanup_on_failure"
+    unified_job_template: "ByteFreezer Full Stack - Cleanup Failed Deployment"
+    
+  - identifier: "notify_partial_success"
+    unified_job_template: "ByteFreezer Full Stack - Notify Partial Success"
+
+- name: "ByteFreezer Full Stack - Remove Complete Stack"
+  description: "Remove both ByteFreezer Control and LocalStack with optional data cleanup"
+  organization: "ByteFreezer"
+  survey_enabled: true
+  survey_spec:
+    name: "ByteFreezer Full Stack Removal Survey"
+    description: "Configure complete stack removal"
+    spec:
+    - question_name: "Target Environment"
+      question_description: "Environment to remove"
+      required: true
+      type: "multiplechoice"
+      variable: "target_environment"
+      choices:
+        - "development"
+        - "staging"
+        - "production"
+      default: "development"
+      
+    - question_name: "Remove LocalStack Data"
+      question_description: "Also remove LocalStack persistent data (WARNING: All AWS data will be lost!)"
+      required: false
+      type: "boolean"
+      variable: "remove_localstack_data"
+      default: false
+      
+    - question_name: "Remove Control Data"
+      question_description: "Also remove ByteFreezer Control persistent data"
+      required: false
+      type: "boolean"
+      variable: "remove_control_data"
+      default: false
+      
+    - question_name: "Remove Namespaces"
+      question_description: "Remove namespaces (only if empty after service removal)"
+      required: false
+      type: "boolean"
+      variable: "remove_namespaces"
+      default: false
+      
+    - question_name: "Confirmation"
+      question_description: "Type 'REMOVE' to confirm complete stack removal"
+      required: true
+      type: "text"
+      variable: "removal_confirmation"
+
+  workflow_nodes:
+  # Step 1: Validate removal confirmation
+  - identifier: "validate_removal"
+    unified_job_template: "ByteFreezer Full Stack - Validate Removal"
+    success_nodes:
+      - "remove_control"
+    failure_nodes:
+      - "notify_invalid_confirmation"
+      
+  # Step 2: Remove ByteFreezer Control first
+  - identifier: "remove_control"
+    unified_job_template: "ByteFreezer Control - Kubernetes Remove"
+    inventory: "Kubernetes {{ target_environment|title }}"
+    extra_vars:
+      remove_storage: "{{ remove_control_data }}"
+      remove_namespace: "{{ remove_namespaces }}"
+    success_nodes:
+      - "remove_localstack"
+    failure_nodes:
+      - "notify_control_removal_failure"
+      
+  # Step 3: Remove LocalStack
+  - identifier: "remove_localstack"
+    unified_job_template: "LocalStack - Helm Remove"
+    inventory: "Kubernetes {{ target_environment|title }}"
+    extra_vars:
+      remove_data: "{{ remove_localstack_data }}"
+      remove_namespace: "{{ remove_namespaces }}"
+    success_nodes:
+      - "cleanup_resources"
+    failure_nodes:
+      - "notify_localstack_removal_failure"
+      
+  # Step 4: Clean up any remaining resources
+  - identifier: "cleanup_resources"
+    unified_job_template: "ByteFreezer Full Stack - Cleanup Resources"
+    inventory: "Kubernetes {{ target_environment|title }}"
+    extra_vars:
+      force_cleanup: true
+      cleanup_pvcs: "{{ remove_localstack_data or remove_control_data }}"
+    always_nodes:
+      - "verify_removal"
+      
+  # Step 5: Verify complete removal
+  - identifier: "verify_removal"
+    unified_job_template: "ByteFreezer Full Stack - Verify Removal"
+    inventory: "Kubernetes {{ target_environment|title }}"
+    success_nodes:
+      - "notify_removal_success"
+    failure_nodes:
+      - "notify_partial_removal"
+      
+  # Notifications
+  - identifier: "notify_removal_success"
+    unified_job_template: "ByteFreezer Full Stack - Notify Removal Success"
+    
+  - identifier: "notify_invalid_confirmation"
+    unified_job_template: "ByteFreezer Full Stack - Notify Invalid Confirmation"
+    
+  - identifier: "notify_control_removal_failure"
+    unified_job_template: "ByteFreezer Full Stack - Notify Control Removal Failure"
+    
+  - identifier: "notify_localstack_removal_failure"
+    unified_job_template: "ByteFreezer Full Stack - Notify LocalStack Removal Failure"
+    
+  - identifier: "notify_partial_removal"
+    unified_job_template: "ByteFreezer Full Stack - Notify Partial Removal"
+
+- name: "ByteFreezer Development - Auto LocalStack Deploy"
+  description: "Continuous deployment for development with LocalStack auto-refresh"
+  organization: "ByteFreezer"
+  survey_enabled: false
+  extra_vars:
+    target_environment: "development"
+    bytefreezer_control_version: "latest"
+    localstack_environment: "dev"
+    storage_enabled: false
+    enable_debug_logging: true
+    auto_refresh: true
+    
+  workflow_nodes:
+  # Check if LocalStack exists and is healthy
+  - identifier: "check_localstack"
+    unified_job_template: "LocalStack - Health Check"
+    inventory: "Kubernetes Development"
+    success_nodes:
+      - "update_control"
+    failure_nodes:
+      - "deploy_localstack_dev"
+      
+  # Deploy LocalStack if not present or unhealthy
+  - identifier: "deploy_localstack_dev"
+    unified_job_template: "LocalStack - Helm Deploy"
+    inventory: "Kubernetes Development"
+    extra_vars:
+      environment: "dev"
+      persistence_enabled: false
+      debug_enabled: true
+      force_recreate: true
+    success_nodes:
+      - "update_control"
+    failure_nodes:
+      - "notify_dev_failure"
+      
+  # Update/Deploy ByteFreezer Control
+  - identifier: "update_control"
+    unified_job_template: "ByteFreezer Control - Kubernetes Deploy"
+    inventory: "Kubernetes Development"
+    extra_vars:
+      target_environment: "development"
+      bytefreezer_control_version: "latest"
+      storage_enabled: false
+      enable_debug_logging: true
+      force_recreate: true
+    success_nodes:
+      - "run_smoke_tests"
+    failure_nodes:
+      - "notify_dev_failure"
+      
+  # Run quick smoke tests
+  - identifier: "run_smoke_tests"
+    unified_job_template: "ByteFreezer Control - Smoke Tests"
+    inventory: "Kubernetes Development"
+    success_nodes:
+      - "notify_dev_success"
+    failure_nodes:
+      - "notify_dev_test_failure"
+      
+  - identifier: "notify_dev_success"
+    unified_job_template: "ByteFreezer Full Stack - Notify Dev Success"
+    
+  - identifier: "notify_dev_failure"
+    unified_job_template: "ByteFreezer Full Stack - Notify Dev Failure"
+    
+  - identifier: "notify_dev_test_failure"
+    unified_job_template: "ByteFreezer Full Stack - Notify Dev Test Failure"

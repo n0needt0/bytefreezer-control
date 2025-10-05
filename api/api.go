@@ -77,12 +77,19 @@ func (api *API) NewRouter() *web.Service {
 	service.Get("/api/v1/ecosystem/services/{serviceName}", api.GetServiceStatus())
 	service.Post("/api/v1/ecosystem/services/{serviceName}/restart", api.RestartService())
 
-	// Tenant management endpoints
-	service.Get("/api/v1/tenants", api.GetTenants())
-	service.Get("/api/v1/tenants/{tenantId}", api.GetTenant())
-	service.Post("/api/v1/tenants", api.CreateTenant())
-	service.Put("/api/v1/tenants/{tenantId}", api.UpdateTenant())
-	service.Delete("/api/v1/tenants/{tenantId}", api.DeleteTenant())
+	// Account management endpoints
+	service.Get("/api/v1/accounts", api.ListAccounts())
+	service.Get("/api/v1/accounts/{accountId}", api.GetAccount())
+	service.Post("/api/v1/accounts", api.CreateAccount())
+	service.Put("/api/v1/accounts/{accountId}", api.UpdateAccount())
+	service.Delete("/api/v1/accounts/{accountId}", api.DeleteAccount())
+
+	// Tenant management endpoints (scoped to account)
+	service.Get("/api/v1/accounts/{accountId}/tenants", api.ListTenants())
+	service.Get("/api/v1/accounts/{accountId}/tenants/{tenantId}", api.GetTenant())
+	service.Post("/api/v1/accounts/{accountId}/tenants", api.CreateTenant())
+	service.Put("/api/v1/accounts/{accountId}/tenants/{tenantId}", api.UpdateTenant())
+	service.Delete("/api/v1/accounts/{accountId}/tenants/{tenantId}", api.DeleteTenant())
 
 	// Statistics endpoint
 	service.Get("/api/v1/stats", api.GetStats())

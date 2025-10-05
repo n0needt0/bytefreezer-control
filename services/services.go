@@ -1,17 +1,21 @@
 package services
 
 import (
+	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/n0needt0/bytefreezer-control/config"
+	"github.com/n0needt0/bytefreezer-control/storage"
 	"github.com/n0needt0/go-goodies/log"
 )
 
 // Services contains all service instances
 type Services struct {
 	Config           *config.Config
-	Database         DatabaseService
+	Storage          storage.Storage // New storage layer
+	Database         DatabaseService // Legacy - to be deprecated
 	EcosystemMonitor EcosystemMonitor
 	Stats            *ControlStats
 	mutex            sync.RWMutex
@@ -96,8 +100,42 @@ func NewServices(config *config.Config) *Services {
 		},
 	}
 
-	// Initialize database service if enabled
+	// Initialize storage layer if database is enabled
 	if config.Database.Enabled {
+		// Build PostgreSQL connection URI
+		uri := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+			config.Database.Host,
+			config.Database.Port,
+			config.Database.Username,
+			config.Database.Password,
+			config.Database.Database,
+			config.Database.SSLMode)
+
+		storageConfig := storage.Config{
+			Type:           config.Database.Type,
+			URI:            uri,
+			Database:       config.Database.Database,
+			TimeoutSeconds: 10, // Default timeout
+			SSLMode:        config.Database.SSLMode,
+		}
+
+		storageInstance, err := storage.NewStorage(storageConfig)
+		if err != nil {
+			log.Warnf("Failed to initialize storage: %v", err)
+		} else {
+			services.Storage = storageInstance
+			log.Info("Storage layer initialized successfully")
+
+			// Run migrations
+			ctx := context.Background()
+			if err := storageInstance.Migrate(ctx); err != nil {
+				log.Warnf("Failed to run migrations: %v", err)
+			} else {
+				log.Info("Database migrations completed successfully")
+			}
+		}
+
+		// Legacy database service for backward compatibility
 		dbService := NewDatabaseService(&config.Database)
 		if err := dbService.Connect(); err != nil {
 			log.Warnf("Failed to connect to database: %v", err)

@@ -35,16 +35,11 @@ services:
 
 # Database configuration for tenant management
 database:
-  enabled: true
-  type: "postgres"
-  host: "localhost"
-  port: 5432
+  type: "postgresql"
+  uri: "postgres://bytefreezer:bytefreezer123@localhost:5432/bytefreezer_control?sslmode=disable"
   database: "bytefreezer_control"
-  username: "bytefreezer"
-  password: "password"
+  timeout_seconds: 30
   ssl_mode: "disable"
-  max_connections: 25
-  max_idle_connections: 10
 
 # OpenTelemetry configuration
 otel:

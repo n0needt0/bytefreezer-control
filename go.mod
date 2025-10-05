@@ -4,6 +4,8 @@ go 1.23.0
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.2.0
+	github.com/google/uuid v1.6.0
+	github.com/lib/pq v1.10.9
 	github.com/n0needt0/go-goodies/log v0.0.0-20250630220836-1971f86125fe
 	github.com/swaggest/openapi-go v0.2.49
 	github.com/swaggest/rest v0.2.65
@@ -23,7 +25,6 @@ require (
 	github.com/go-chi/chi/v5 v5.0.12 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.1 // indirect
 	github.com/santhosh-tekuri/jsonschema/v3 v3.1.0 // indirect
 	github.com/swaggest/form/v5 v5.1.1 // indirect

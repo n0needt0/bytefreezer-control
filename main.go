@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
 	"strconv"
@@ -16,6 +17,9 @@ import (
 )
 
 var (
+	version   = "dev"
+	buildTime = "unknown"
+	gitCommit = "unknown"
 	conf      = config.Config{}
 	envPrefix = "BYTEFREEZER_CONTROL_"
 )
@@ -32,7 +36,7 @@ func main() {
 
 	// Handle version flag
 	if *showVersion {
-		log.Infof("%s version %s", "bytefreezer-control", "1.0.0")
+		fmt.Printf("bytefreezer-control version %s (built %s, commit %s)\n", version, buildTime, gitCommit)
 		os.Exit(0)
 	}
 

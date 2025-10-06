@@ -31,6 +31,38 @@ func GenerateShortID() string {
 	return id
 }
 
+// ValidateID validates that an ID follows the required format: lowercase alphanumeric + dash
+// Must start with letter, 3-63 characters
+func ValidateID(id string) error {
+	if len(id) < 3 || len(id) > 63 {
+		return fmt.Errorf("ID must be between 3 and 63 characters")
+	}
+
+	// Must start with a letter
+	if id[0] < 'a' || id[0] > 'z' {
+		return fmt.Errorf("ID must start with a lowercase letter")
+	}
+
+	// Check all characters
+	for i, ch := range id {
+		if !((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-') {
+			return fmt.Errorf("ID can only contain lowercase letters, numbers, and dashes")
+		}
+
+		// Cannot end with dash
+		if i == len(id)-1 && ch == '-' {
+			return fmt.Errorf("ID cannot end with a dash")
+		}
+
+		// Cannot have consecutive dashes
+		if ch == '-' && i > 0 && id[i-1] == '-' {
+			return fmt.Errorf("ID cannot have consecutive dashes")
+		}
+	}
+
+	return nil
+}
+
 // HealthResponse represents health check response
 type HealthResponse struct {
 	Status    string    `json:"status"`
@@ -411,6 +443,7 @@ func (api *API) GetTenant() usecase.Interactor {
 func (api *API) CreateTenant() usecase.Interactor {
 	type createTenantInput struct {
 		AccountID   string `path:"accountId" required:"true"`
+		ID          string `json:"id" required:"true"`
 		Name        string `json:"name" required:"true"`
 		Description string `json:"description"`
 	}
@@ -423,7 +456,13 @@ func (api *API) CreateTenant() usecase.Interactor {
 			return fmt.Errorf("storage not initialized")
 		}
 
+		// Validate ID format
+		if err := ValidateID(input.ID); err != nil {
+			return fmt.Errorf("invalid tenant ID: %w", err)
+		}
+
 		tenant := &storage.Tenant{
+			ID:          input.ID,
 			AccountID:   input.AccountID,
 			Name:        input.Name,
 			Description: input.Description,
@@ -667,6 +706,7 @@ func (api *API) GetDataset() usecase.Interactor {
 func (api *API) CreateDataset() usecase.Interactor {
 	type createDatasetInput struct {
 		TenantID    string                `path:"tenantId" required:"true"`
+		ID          string                `json:"id" required:"true"`
 		Name        string                `json:"name" required:"true"`
 		Description string                `json:"description"`
 		Config      storage.DatasetConfig `json:"config"`
@@ -680,8 +720,13 @@ func (api *API) CreateDataset() usecase.Interactor {
 			return fmt.Errorf("storage not initialized")
 		}
 
+		// Validate ID format
+		if err := ValidateID(input.ID); err != nil {
+			return fmt.Errorf("invalid dataset ID: %w", err)
+		}
+
 		dataset := &storage.Dataset{
-			ID:          GenerateShortID(),
+			ID:          input.ID,
 			TenantID:    input.TenantID,
 			Name:        input.Name,
 			Description: input.Description,

@@ -11,32 +11,9 @@ logging:
   level: {{ config.logging.level }}
   encoding: {{ config.logging.encoding }}
 
-# API server configuration  
+# API server configuration
 server:
   api_port: {{ config.server.api_port }}
-
-# Ecosystem services configuration
-services:
-  receiver:
-    url: "{{ config.services.receiver.url }}"
-    health_endpoint: "{{ config.services.receiver.health_endpoint }}"
-    config_endpoint: "{{ config.services.receiver.config_endpoint }}"
-    timeout_seconds: {{ config.services.receiver.timeout_seconds }}
-  proxy:
-    url: "{{ config.services.proxy.url }}"
-    health_endpoint: "{{ config.services.proxy.health_endpoint }}"
-    config_endpoint: "{{ config.services.proxy.config_endpoint }}"
-    timeout_seconds: {{ config.services.proxy.timeout_seconds }}
-  soc:
-    url: "{{ config.services.soc.url }}"
-    health_endpoint: "{{ config.services.soc.health_endpoint }}"
-    config_endpoint: "{{ config.services.soc.config_endpoint }}"
-    timeout_seconds: {{ config.services.soc.timeout_seconds }}
-  packer:
-    url: "{{ config.services.packer.url }}"
-    health_endpoint: "{{ config.services.packer.health_endpoint }}"
-    config_endpoint: "{{ config.services.packer.config_endpoint }}"
-    timeout_seconds: {{ config.services.packer.timeout_seconds }}
 
 # Database configuration for tenant management
 database:
@@ -54,7 +31,6 @@ database:
 # OpenTelemetry configuration
 otel:
   enabled: {{ config.otel.enabled | lower }}
-  endpoint: "{{ config.otel.endpoint }}"
   service_name: "{{ config.otel.service_name }}"
   scrape_interval_seconds: {{ config.otel.scrape_interval_seconds }}
   metrics_host: "{{ config.otel.metrics_host }}"

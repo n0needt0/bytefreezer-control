@@ -13,25 +13,21 @@ import (
 
 // Services contains all service instances
 type Services struct {
-	Config           *config.Config
-	Storage          storage.Storage // New storage layer
-	Database         DatabaseService // Legacy - to be deprecated
-	EcosystemMonitor EcosystemMonitor
-	Stats            *ControlStats
-	mutex            sync.RWMutex
+	Config   *config.Config
+	Storage  storage.Storage // New storage layer
+	Database DatabaseService // Legacy - to be deprecated
+	Stats    *ControlStats
+	mutex    sync.RWMutex
 }
 
 // ControlStats tracks control service statistics
 type ControlStats struct {
-	StartTime             time.Time
-	UptimeSeconds         int64
-	APIRequests           int64
-	ServicesMonitored     int64
-	HealthChecksPerformed int64
-	ConfigUpdates         int64
-	DatabaseQueries       int64
-	LastActivity          time.Time
-	mutex                 sync.RWMutex
+	StartTime       time.Time
+	UptimeSeconds   int64
+	APIRequests     int64
+	DatabaseQueries int64
+	LastActivity    time.Time
+	mutex           sync.RWMutex
 }
 
 // DatabaseService interface for database operations
@@ -47,24 +43,6 @@ type DatabaseService interface {
 	DeleteTenant(id string) error
 }
 
-// EcosystemMonitor interface for monitoring ByteFreezer services
-type EcosystemMonitor interface {
-	CheckAllServices() error
-	CheckService(serviceName string) (*ServiceStatus, error)
-	GetServiceStatuses() map[string]*ServiceStatus
-}
-
-// ServiceStatus represents the status of a ByteFreezer service
-type ServiceStatus struct {
-	Name         string                 `json:"name"`
-	URL          string                 `json:"url"`
-	Healthy      bool                   `json:"healthy"`
-	LastCheck    time.Time              `json:"last_check"`
-	ResponseTime time.Duration          `json:"response_time"`
-	Version      string                 `json:"version"`
-	Config       map[string]interface{} `json:"config,omitempty"`
-	Error        string                 `json:"error,omitempty"`
-}
 
 // Tenant represents a tenant in the system
 type Tenant struct {
@@ -143,10 +121,6 @@ func NewServices(config *config.Config) *Services {
 		services.Database = dbService
 	}
 
-	// Initialize ecosystem monitor
-	monitor := NewEcosystemMonitor(config)
-	services.EcosystemMonitor = monitor
-
 	return services
 }
 
@@ -160,14 +134,11 @@ func (s *Services) GetStats() *ControlStats {
 
 	// Create a copy to avoid race conditions
 	return &ControlStats{
-		StartTime:             s.Stats.StartTime,
-		UptimeSeconds:         s.Stats.UptimeSeconds,
-		APIRequests:           s.Stats.APIRequests,
-		ServicesMonitored:     s.Stats.ServicesMonitored,
-		HealthChecksPerformed: s.Stats.HealthChecksPerformed,
-		ConfigUpdates:         s.Stats.ConfigUpdates,
-		DatabaseQueries:       s.Stats.DatabaseQueries,
-		LastActivity:          s.Stats.LastActivity,
+		StartTime:       s.Stats.StartTime,
+		UptimeSeconds:   s.Stats.UptimeSeconds,
+		APIRequests:     s.Stats.APIRequests,
+		DatabaseQueries: s.Stats.DatabaseQueries,
+		LastActivity:    s.Stats.LastActivity,
 	}
 }
 
@@ -180,22 +151,6 @@ func (s *Services) IncrementAPIRequests() {
 	s.Stats.LastActivity = time.Now()
 }
 
-// IncrementHealthChecks increments the health checks counter
-func (s *Services) IncrementHealthChecks() {
-	s.Stats.mutex.Lock()
-	defer s.Stats.mutex.Unlock()
-
-	s.Stats.HealthChecksPerformed++
-}
-
-// IncrementConfigUpdates increments the config updates counter
-func (s *Services) IncrementConfigUpdates() {
-	s.Stats.mutex.Lock()
-	defer s.Stats.mutex.Unlock()
-
-	s.Stats.ConfigUpdates++
-	s.Stats.LastActivity = time.Now()
-}
 
 // IncrementDatabaseQueries increments the database queries counter
 func (s *Services) IncrementDatabaseQueries() {

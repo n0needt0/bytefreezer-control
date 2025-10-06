@@ -71,12 +71,6 @@ func (api *API) NewRouter() *web.Service {
 	// Configuration endpoints
 	service.Get("/api/v1/config", api.GetConfig())
 
-	// Ecosystem monitoring endpoints
-	service.Get("/api/v1/ecosystem/health", api.GetEcosystemHealth())
-	service.Get("/api/v1/ecosystem/services", api.GetServiceStatuses())
-	service.Get("/api/v1/ecosystem/services/{serviceName}", api.GetServiceStatus())
-	service.Post("/api/v1/ecosystem/services/{serviceName}/restart", api.RestartService())
-
 	// Account management endpoints
 	service.Get("/api/v1/accounts", api.ListAccounts())
 	service.Get("/api/v1/accounts/{accountId}", api.GetAccount())

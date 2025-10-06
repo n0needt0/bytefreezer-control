@@ -174,11 +174,6 @@ func (svc *Server) startHousekeeping() {
 func (svc *Server) runHousekeeping() {
 	log.Debug("Running housekeeping tasks...")
 
-	// Check ecosystem services health
-	if svc.Services.EcosystemMonitor != nil {
-		svc.Services.EcosystemMonitor.CheckAllServices()
-	}
-
 	// Perform database maintenance
 	if svc.Services.Database != nil {
 		// Add database maintenance tasks here

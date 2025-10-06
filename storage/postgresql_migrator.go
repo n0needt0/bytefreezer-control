@@ -342,7 +342,7 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 		return `
 			-- Create accounts table
 			CREATE TABLE IF NOT EXISTS control_accounts (
-				id VARCHAR(36) PRIMARY KEY,
+				id VARCHAR(12) PRIMARY KEY,
 				name VARCHAR(255) NOT NULL,
 				email VARCHAR(255) UNIQUE NOT NULL,
 				active BOOLEAN NOT NULL DEFAULT true,
@@ -354,8 +354,8 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 
 			-- Create tenants table (belongs to accounts)
 			CREATE TABLE IF NOT EXISTS control_tenants (
-				id VARCHAR(36) PRIMARY KEY,
-				account_id VARCHAR(36) NOT NULL REFERENCES control_accounts(id) ON DELETE CASCADE,
+				id VARCHAR(12) PRIMARY KEY,
+				account_id VARCHAR(12) NOT NULL REFERENCES control_accounts(id) ON DELETE CASCADE,
 				name VARCHAR(255) NOT NULL,
 				description TEXT,
 				active BOOLEAN NOT NULL DEFAULT true,
@@ -368,8 +368,8 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 
 			-- Create datasets table (belongs to tenants)
 			CREATE TABLE IF NOT EXISTS control_datasets (
-				id VARCHAR(36) PRIMARY KEY,
-				tenant_id VARCHAR(36) NOT NULL REFERENCES control_tenants(id) ON DELETE CASCADE,
+				id VARCHAR(12) PRIMARY KEY,
+				tenant_id VARCHAR(12) NOT NULL REFERENCES control_tenants(id) ON DELETE CASCADE,
 				name VARCHAR(255) NOT NULL,
 				description TEXT,
 				active BOOLEAN NOT NULL DEFAULT true,
@@ -388,8 +388,8 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 
 			-- Create api_keys table for authentication
 			CREATE TABLE IF NOT EXISTS control_api_keys (
-				id VARCHAR(36) PRIMARY KEY,
-				account_id VARCHAR(36) NOT NULL REFERENCES control_accounts(id) ON DELETE CASCADE,
+				id VARCHAR(12) PRIMARY KEY,
+				account_id VARCHAR(12) NOT NULL REFERENCES control_accounts(id) ON DELETE CASCADE,
 				name VARCHAR(255) NOT NULL,
 				key_hash VARCHAR(255) NOT NULL UNIQUE,
 				permissions JSONB NOT NULL DEFAULT '{}'::jsonb,

@@ -12,7 +12,6 @@ type Config struct {
 	App          AppConfig          `yaml:"app"`
 	Logging      LoggingConfig      `yaml:"logging"`
 	Server       ServerConfig       `yaml:"server"`
-	Services     ServicesConfig     `yaml:"services"`
 	Database     DatabaseConfig     `yaml:"database"`
 	Otel         OtelConfig         `yaml:"otel"`
 	Housekeeping HousekeepingConfig `yaml:"housekeeping"`
@@ -21,8 +20,7 @@ type Config struct {
 	Dev          bool               `yaml:"dev"`
 
 	// Initialized components (set at runtime)
-	DatabaseService  interface{} `yaml:"-"`
-	EcosystemMonitor interface{} `yaml:"-"`
+	DatabaseService interface{} `yaml:"-"`
 }
 
 type AppConfig struct {
@@ -37,20 +35,6 @@ type LoggingConfig struct {
 
 type ServerConfig struct {
 	ApiPort int `yaml:"api_port"`
-}
-
-type ServicesConfig struct {
-	Receiver ServiceEndpoint `yaml:"receiver"`
-	Proxy    ServiceEndpoint `yaml:"proxy"`
-	SOC      ServiceEndpoint `yaml:"soc"`
-	Packer   ServiceEndpoint `yaml:"packer"`
-}
-
-type ServiceEndpoint struct {
-	URL            string `yaml:"url"`
-	HealthEndpoint string `yaml:"health_endpoint"`
-	ConfigEndpoint string `yaml:"config_endpoint"`
-	TimeoutSeconds int    `yaml:"timeout_seconds"`
 }
 
 type DatabaseConfig struct {
@@ -68,7 +52,6 @@ type DatabaseConfig struct {
 
 type OtelConfig struct {
 	Enabled               bool   `yaml:"enabled"`
-	Endpoint              string `yaml:"endpoint"`
 	ServiceName           string `yaml:"service_name"`
 	ScrapeIntervalSeconds int    `yaml:"scrape_interval_seconds"`
 	MetricsHost           string `yaml:"metrics_host"`

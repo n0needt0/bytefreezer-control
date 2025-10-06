@@ -7,17 +7,8 @@ github_repo: "n0needt0/bytefreezer-control"
 version: "{{ bytefreezer_control_version | default('latest') }}"
 
 # AWX Survey Variables (Override via job template surveys)
-# These variables can be configured in AWX job template surveys
-# Set defaults here - AWX surveys will override these
-target_environment: development
 force_reinstall: false
-skip_validation: false
 enable_debug_logging: false
-
-# Database migration options - Control schema and data behavior
-migration_mode: upgrade  # upgrade, fresh_install, reset_data, rollback
-migration_target_version: 0  # 0 = latest
-migration_dry_run: false
 
 # Service configuration
 service:
@@ -52,30 +43,7 @@ config:
   
   server:
     api_port: 8082
-  
-  # Ecosystem services configuration
-  services:
-    receiver:
-      url: "http://localhost:8080"
-      health_endpoint: "/api/v2/health"
-      config_endpoint: "/api/v2/config"
-      timeout_seconds: 30
-    proxy:
-      url: "http://localhost:8088"
-      health_endpoint: "/api/v2/health"
-      config_endpoint: "/api/v2/config"
-      timeout_seconds: 30
-    soc:
-      url: "http://localhost:8089"
-      health_endpoint: "/api/v1/health"
-      config_endpoint: "/api/v1/config"
-      timeout_seconds: 30
-    packer:
-      url: "http://localhost:8090"
-      health_endpoint: "/api/v1/health"
-      config_endpoint: "/api/v1/config"
-      timeout_seconds: 30
-  
+
   # Database configuration for tenant management
   database:
     enabled: true
@@ -92,7 +60,6 @@ config:
   # OpenTelemetry configuration
   otel:
     enabled: true
-    endpoint: "http://localhost:4317"
     service_name: "bytefreezer-control"
     scrape_interval_seconds: 60
     metrics_host: "0.0.0.0"

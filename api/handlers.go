@@ -6,9 +6,7 @@ import (
 	"time"
 
 	"github.com/n0needt0/bytefreezer-control/middleware"
-	"github.com/n0needt0/bytefreezer-control/services"
 	"github.com/n0needt0/bytefreezer-control/storage"
-	"github.com/n0needt0/go-goodies/log"
 	"github.com/swaggest/usecase"
 	usecaseStatus "github.com/swaggest/usecase/status"
 )
@@ -25,7 +23,6 @@ type HealthResponse struct {
 // ConfigResponse represents configuration response
 type ConfigResponse struct {
 	App       AppConfigResponse       `json:"app"`
-	Services  ServicesConfigResponse  `json:"services"`
 	Database  DatabaseConfigResponse  `json:"database"`
 	Auth      AuthConfigResponse      `json:"auth"`
 	RateLimit RateLimitConfigResponse `json:"rate_limit"`
@@ -34,20 +31,6 @@ type ConfigResponse struct {
 type AppConfigResponse struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
-}
-
-type ServicesConfigResponse struct {
-	Receiver ServiceEndpointResponse `json:"receiver"`
-	Proxy    ServiceEndpointResponse `json:"proxy"`
-	SOC      ServiceEndpointResponse `json:"soc"`
-	Packer   ServiceEndpointResponse `json:"packer"`
-}
-
-type ServiceEndpointResponse struct {
-	URL            string `json:"url"`
-	HealthEndpoint string `json:"health_endpoint"`
-	ConfigEndpoint string `json:"config_endpoint"`
-	TimeoutSeconds int    `json:"timeout_seconds"`
 }
 
 type DatabaseConfigResponse struct {
@@ -69,24 +52,12 @@ type RateLimitConfigResponse struct {
 	BurstSize         int  `json:"burst_size"`
 }
 
-// EcosystemHealthResponse represents ecosystem health response
-type EcosystemHealthResponse struct {
-	OverallStatus string                             `json:"overall_status"`
-	Services      map[string]*services.ServiceStatus `json:"services"`
-	LastCheck     time.Time                          `json:"last_check"`
-	HealthyCount  int                                `json:"healthy_count"`
-	TotalCount    int                                `json:"total_count"`
-}
-
 // StatsResponse represents statistics response
 type StatsResponse struct {
-	Uptime                string    `json:"uptime"`
-	APIRequests           int64     `json:"api_requests"`
-	ServicesMonitored     int64     `json:"services_monitored"`
-	HealthChecksPerformed int64     `json:"health_checks_performed"`
-	ConfigUpdates         int64     `json:"config_updates"`
-	DatabaseQueries       int64     `json:"database_queries"`
-	LastActivity          time.Time `json:"last_activity"`
+	Uptime          string    `json:"uptime"`
+	APIRequests     int64     `json:"api_requests"`
+	DatabaseQueries int64     `json:"database_queries"`
+	LastActivity    time.Time `json:"last_activity"`
 }
 
 // HealthCheck returns the health status of the control service
@@ -123,33 +94,6 @@ func (api *API) GetConfig() usecase.Interactor {
 			Version: api.Config.App.Version,
 		}
 
-		output.Services = ServicesConfigResponse{
-			Receiver: ServiceEndpointResponse{
-				URL:            api.Config.Services.Receiver.URL,
-				HealthEndpoint: api.Config.Services.Receiver.HealthEndpoint,
-				ConfigEndpoint: api.Config.Services.Receiver.ConfigEndpoint,
-				TimeoutSeconds: api.Config.Services.Receiver.TimeoutSeconds,
-			},
-			Proxy: ServiceEndpointResponse{
-				URL:            api.Config.Services.Proxy.URL,
-				HealthEndpoint: api.Config.Services.Proxy.HealthEndpoint,
-				ConfigEndpoint: api.Config.Services.Proxy.ConfigEndpoint,
-				TimeoutSeconds: api.Config.Services.Proxy.TimeoutSeconds,
-			},
-			SOC: ServiceEndpointResponse{
-				URL:            api.Config.Services.SOC.URL,
-				HealthEndpoint: api.Config.Services.SOC.HealthEndpoint,
-				ConfigEndpoint: api.Config.Services.SOC.ConfigEndpoint,
-				TimeoutSeconds: api.Config.Services.SOC.TimeoutSeconds,
-			},
-			Packer: ServiceEndpointResponse{
-				URL:            api.Config.Services.Packer.URL,
-				HealthEndpoint: api.Config.Services.Packer.HealthEndpoint,
-				ConfigEndpoint: api.Config.Services.Packer.ConfigEndpoint,
-				TimeoutSeconds: api.Config.Services.Packer.TimeoutSeconds,
-			},
-		}
-
 		output.Database = DatabaseConfigResponse{
 			Enabled: api.Config.Database.Enabled,
 			Type:    api.Config.Database.Type,
@@ -175,133 +119,6 @@ func (api *API) GetConfig() usecase.Interactor {
 	u.SetTitle("Get Configuration")
 	u.SetDescription("Returns the sanitized service configuration")
 	u.SetTags("config")
-
-	return u
-}
-
-// GetEcosystemHealth returns the health status of all ecosystem services
-func (api *API) GetEcosystemHealth() usecase.Interactor {
-	type ecosystemInput struct{}
-
-	u := usecase.NewInteractor(func(ctx context.Context, input ecosystemInput, output *EcosystemHealthResponse) error {
-		api.Services.IncrementAPIRequests()
-		api.Services.IncrementHealthChecks()
-
-		// Trigger fresh health check
-		if err := api.Services.EcosystemMonitor.CheckAllServices(); err != nil {
-			log.Warnf("Failed to check all services: %v", err)
-		}
-
-		statuses := api.Services.EcosystemMonitor.GetServiceStatuses()
-
-		healthyCount := 0
-		overallHealthy := true
-
-		for _, status := range statuses {
-			if status.Healthy {
-				healthyCount++
-			} else {
-				overallHealthy = false
-			}
-		}
-
-		output.Services = statuses
-		output.LastCheck = time.Now()
-		output.HealthyCount = healthyCount
-		output.TotalCount = len(statuses)
-
-		if overallHealthy && len(statuses) > 0 {
-			output.OverallStatus = "healthy"
-		} else if healthyCount > 0 {
-			output.OverallStatus = "degraded"
-		} else {
-			output.OverallStatus = "unhealthy"
-		}
-
-		return nil
-	})
-
-	u.SetTitle("Get Ecosystem Health")
-	u.SetDescription("Returns the health status of all ByteFreezer services")
-	u.SetTags("ecosystem", "health")
-
-	return u
-}
-
-// GetServiceStatuses returns the status of all services
-func (api *API) GetServiceStatuses() usecase.Interactor {
-	type servicesInput struct{}
-
-	u := usecase.NewInteractor(func(ctx context.Context, input servicesInput, output *map[string]*services.ServiceStatus) error {
-		api.Services.IncrementAPIRequests()
-
-		statuses := api.Services.EcosystemMonitor.GetServiceStatuses()
-		*output = statuses
-
-		return nil
-	})
-
-	u.SetTitle("Get Service Statuses")
-	u.SetDescription("Returns the status of all monitored services")
-	u.SetTags("ecosystem", "services")
-
-	return u
-}
-
-// GetServiceStatus returns the status of a specific service
-func (api *API) GetServiceStatus() usecase.Interactor {
-	type serviceInput struct {
-		ServiceName string `path:"serviceName"`
-	}
-
-	u := usecase.NewInteractor(func(ctx context.Context, input serviceInput, output *services.ServiceStatus) error {
-		api.Services.IncrementAPIRequests()
-		api.Services.IncrementHealthChecks()
-
-		serviceStatus, err := api.Services.EcosystemMonitor.CheckService(input.ServiceName)
-		if err != nil {
-			return usecaseStatus.Wrap(fmt.Errorf("failed to check service %s: %w", input.ServiceName, err), usecaseStatus.Internal)
-		}
-
-		*output = *serviceStatus
-		return nil
-	})
-
-	u.SetTitle("Get Service Status")
-	u.SetDescription("Returns the status of a specific service")
-	u.SetTags("ecosystem", "services")
-	// u.SetExpectedErrors(usecaseStatus.NotFound, usecaseStatus.Internal)
-
-	return u
-}
-
-// RestartService restarts a specific service (placeholder)
-func (api *API) RestartService() usecase.Interactor {
-	type restartInput struct {
-		ServiceName string `path:"serviceName"`
-	}
-
-	type restartOutput struct {
-		Success bool   `json:"success"`
-		Message string `json:"message"`
-	}
-
-	u := usecase.NewInteractor(func(ctx context.Context, input restartInput, output *restartOutput) error {
-		api.Services.IncrementAPIRequests()
-
-		// TODO: Implement actual service restart logic
-		log.Infof("Restart requested for service: %s", input.ServiceName)
-
-		output.Success = false
-		output.Message = fmt.Sprintf("Service restart not implemented for %s", input.ServiceName)
-
-		return fmt.Errorf("service restart not implemented")
-	})
-
-	u.SetTitle("Restart Service")
-	u.SetDescription("Restarts a specific ByteFreezer service")
-	u.SetTags("ecosystem", "control")
-	// u.SetExpectedErrors(usecaseStatus.NotFound, usecaseStatus.NotImplemented501)
 
 	return u
 }
@@ -768,9 +585,6 @@ func (api *API) GetStats() usecase.Interactor {
 
 		output.Uptime = uptime.String()
 		output.APIRequests = stats.APIRequests
-		output.ServicesMonitored = stats.ServicesMonitored
-		output.HealthChecksPerformed = stats.HealthChecksPerformed
-		output.ConfigUpdates = stats.ConfigUpdates
 		output.DatabaseQueries = stats.DatabaseQueries
 		output.LastActivity = stats.LastActivity
 

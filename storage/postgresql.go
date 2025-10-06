@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 )
@@ -57,7 +56,7 @@ func NewPostgreSQLStorage(config Config) (*PostgreSQLStorage, error) {
 // Account operations
 func (p *PostgreSQLStorage) CreateAccount(ctx context.Context, account *Account) error {
 	if account.ID == "" {
-		account.ID = uuid.New().String()
+		account.ID = GenerateShortID()
 	}
 
 	// Set default config if empty
@@ -242,7 +241,7 @@ func (p *PostgreSQLStorage) ListAccounts(ctx context.Context, opts ListOptions) 
 // Tenant operations
 func (p *PostgreSQLStorage) CreateTenant(ctx context.Context, tenant *Tenant) error {
 	if tenant.ID == "" {
-		tenant.ID = uuid.New().String()
+		tenant.ID = GenerateShortID()
 	}
 
 	// Set default config if empty
@@ -457,7 +456,7 @@ func (p *PostgreSQLStorage) queryTenants(ctx context.Context, query string, args
 // Dataset operations
 func (p *PostgreSQLStorage) CreateDataset(ctx context.Context, dataset *Dataset) error {
 	if dataset.ID == "" {
-		dataset.ID = uuid.New().String()
+		dataset.ID = GenerateShortID()
 	}
 
 	// Set default config if empty

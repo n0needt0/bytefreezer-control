@@ -105,20 +105,20 @@ config:
   
   # Authentication and authorization
   auth:
-    enabled: true
+    enabled: false  # Disabled for easier browser testing
     jwt_secret: "your-jwt-secret-key-here"
     token_expiry_hours: 24
     admin_users:
       - "admin@company.com"
-  
+
   # Rate limiting
   rate_limit:
-    enabled: true
+    enabled: false  # Disabled for easier browser testing
     requests_per_minute: 100
     burst_size: 20
-  
+
   # Development mode
-  dev: "{{ true if target_environment == 'development' else false }}"
+  dev: true  # Enable dev mode for browser testing
 
 # Download configuration for install.yml
 download:

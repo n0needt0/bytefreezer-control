@@ -85,9 +85,6 @@ func (api *API) NewRouter() *web.Service {
 	service.Put("/api/v1/accounts/{accountId}/tenants/{tenantId}", api.UpdateTenant())
 	service.Delete("/api/v1/accounts/{accountId}/tenants/{tenantId}", api.DeleteTenant())
 
-	// Statistics endpoint
-	service.Get("/api/v1/stats", api.GetStats())
-
 	// API documentation
 	service.Docs("/v1/docs", swgui.New)
 

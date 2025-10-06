@@ -52,13 +52,6 @@ type RateLimitConfigResponse struct {
 	BurstSize         int  `json:"burst_size"`
 }
 
-// StatsResponse represents statistics response
-type StatsResponse struct {
-	Uptime          string    `json:"uptime"`
-	APIRequests     int64     `json:"api_requests"`
-	DatabaseQueries int64     `json:"database_queries"`
-	LastActivity    time.Time `json:"last_activity"`
-}
 
 // HealthCheck returns the health status of the control service
 func (api *API) HealthCheck() usecase.Interactor {
@@ -575,25 +568,3 @@ func (api *API) Login() usecase.Interactor {
 	return u
 }
 
-// GetStats returns service statistics
-func (api *API) GetStats() usecase.Interactor {
-	type statsInput struct{}
-
-	u := usecase.NewInteractor(func(ctx context.Context, input statsInput, output *StatsResponse) error {
-		stats := api.Services.GetStats()
-		uptime := time.Since(stats.StartTime)
-
-		output.Uptime = uptime.String()
-		output.APIRequests = stats.APIRequests
-		output.DatabaseQueries = stats.DatabaseQueries
-		output.LastActivity = stats.LastActivity
-
-		return nil
-	})
-
-	u.SetTitle("Get Statistics")
-	u.SetDescription("Returns service statistics and metrics")
-	u.SetTags("stats")
-
-	return u
-}

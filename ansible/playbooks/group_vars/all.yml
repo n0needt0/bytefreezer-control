@@ -8,15 +8,16 @@ version: "{{ bytefreezer_control_version | default('latest') }}"
 
 # AWX Survey Variables (Override via job template surveys)
 # These variables can be configured in AWX job template surveys
-target_environment: "{{ target_environment | default('development') }}"
-force_reinstall: "{{ force_reinstall | default(false) }}"
-skip_validation: "{{ skip_validation | default(false) }}"
-enable_debug_logging: "{{ enable_debug_logging | default(false) }}"
+# Set defaults here - AWX surveys will override these
+target_environment: development
+force_reinstall: false
+skip_validation: false
+enable_debug_logging: false
 
 # Database migration options - Control schema and data behavior
-migration_mode: "{{ migration_mode | default('upgrade') }}"  # upgrade, fresh_install, reset_data, rollback
-migration_target_version: "{{ migration_target_version | default(0) }}"  # 0 = latest
-migration_dry_run: "{{ migration_dry_run | default(false) }}"
+migration_mode: upgrade  # upgrade, fresh_install, reset_data, rollback
+migration_target_version: 0  # 0 = latest
+migration_dry_run: false
 
 # Service configuration
 service:

@@ -340,6 +340,7 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 				name VARCHAR(255) NOT NULL,
 				email VARCHAR(255) UNIQUE NOT NULL,
 				active BOOLEAN NOT NULL DEFAULT true,
+				instance_id VARCHAR(100),
 				created_at TIMESTAMP WITH TIME ZONE NOT NULL,
 				updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
 				config JSONB NOT NULL DEFAULT '{}'::jsonb
@@ -352,6 +353,7 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 				name VARCHAR(255) NOT NULL,
 				description TEXT,
 				active BOOLEAN NOT NULL DEFAULT true,
+				instance_id VARCHAR(100),
 				created_at TIMESTAMP WITH TIME ZONE NOT NULL,
 				updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
 				config JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -366,6 +368,7 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 				description TEXT,
 				active BOOLEAN NOT NULL DEFAULT true,
 				status VARCHAR(50) NOT NULL DEFAULT 'active',
+				instance_id VARCHAR(100),
 				created_at TIMESTAMP WITH TIME ZONE NOT NULL,
 				updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
 				config JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -385,6 +388,7 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 				key_hash VARCHAR(255) NOT NULL UNIQUE,
 				permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
 				active BOOLEAN NOT NULL DEFAULT true,
+				instance_id VARCHAR(100),
 				last_used_at TIMESTAMP WITH TIME ZONE,
 				created_at TIMESTAMP WITH TIME ZONE NOT NULL,
 				updated_at TIMESTAMP WITH TIME ZONE NOT NULL
@@ -396,20 +400,24 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 			CREATE INDEX idx_accounts_email ON accounts(email);
 			CREATE INDEX idx_accounts_active ON accounts(active);
 			CREATE INDEX idx_accounts_created_at ON accounts(created_at);
+			CREATE INDEX idx_accounts_instance ON accounts(instance_id);
 
 			CREATE INDEX idx_tenants_account_id ON tenants(account_id);
 			CREATE INDEX idx_tenants_active ON tenants(active);
 			CREATE INDEX idx_tenants_created_at ON tenants(created_at);
+			CREATE INDEX idx_tenants_instance ON tenants(instance_id);
 
 			CREATE INDEX idx_datasets_tenant_id ON datasets(tenant_id);
 			CREATE INDEX idx_datasets_status ON datasets(status);
 			CREATE INDEX idx_datasets_active ON datasets(active);
 			CREATE INDEX idx_datasets_created_at ON datasets(created_at);
 			CREATE INDEX idx_datasets_last_processed_at ON datasets(last_processed_at);
+			CREATE INDEX idx_datasets_instance ON datasets(instance_id);
 
 			CREATE INDEX idx_api_keys_account_id ON api_keys(account_id);
 			CREATE INDEX idx_api_keys_key_hash ON api_keys(key_hash);
-			CREATE INDEX idx_api_keys_active ON api_keys(active);`
+			CREATE INDEX idx_api_keys_active ON api_keys(active);
+			CREATE INDEX idx_api_keys_instance ON api_keys(instance_id);`
 
 	case 3:
 		return `

@@ -335,7 +335,7 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 	case 1:
 		return `
 			-- Create accounts table
-			CREATE TABLE accounts (
+			CREATE TABLE IF NOT EXISTS accounts (
 				id VARCHAR(36) PRIMARY KEY,
 				name VARCHAR(255) NOT NULL,
 				email VARCHAR(255) UNIQUE NOT NULL,
@@ -347,7 +347,7 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 			);
 
 			-- Create tenants table (belongs to accounts)
-			CREATE TABLE tenants (
+			CREATE TABLE IF NOT EXISTS tenants (
 				id VARCHAR(36) PRIMARY KEY,
 				account_id VARCHAR(36) NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
 				name VARCHAR(255) NOT NULL,
@@ -361,7 +361,7 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 			);
 
 			-- Create datasets table (belongs to tenants)
-			CREATE TABLE datasets (
+			CREATE TABLE IF NOT EXISTS datasets (
 				id VARCHAR(36) PRIMARY KEY,
 				tenant_id VARCHAR(36) NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
 				name VARCHAR(255) NOT NULL,
@@ -381,7 +381,7 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 			);
 
 			-- Create api_keys table for authentication
-			CREATE TABLE api_keys (
+			CREATE TABLE IF NOT EXISTS api_keys (
 				id VARCHAR(36) PRIMARY KEY,
 				account_id VARCHAR(36) NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
 				name VARCHAR(255) NOT NULL,

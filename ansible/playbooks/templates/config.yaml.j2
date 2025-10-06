@@ -57,6 +57,8 @@ otel:
   endpoint: "{{ config.otel.endpoint }}"
   service_name: "{{ config.otel.service_name }}"
   scrape_interval_seconds: {{ config.otel.scrape_interval_seconds }}
+  metrics_host: "{{ config.otel.metrics_host }}"
+  metrics_port: {{ config.otel.metrics_port }}
 
 # Housekeeping configuration
 housekeeping:

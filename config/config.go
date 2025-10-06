@@ -71,6 +71,8 @@ type OtelConfig struct {
 	Endpoint              string `yaml:"endpoint"`
 	ServiceName           string `yaml:"service_name"`
 	ScrapeIntervalSeconds int    `yaml:"scrape_interval_seconds"`
+	MetricsHost           string `yaml:"metrics_host"`
+	MetricsPort           int    `yaml:"metrics_port"`
 }
 
 type HousekeepingConfig struct {

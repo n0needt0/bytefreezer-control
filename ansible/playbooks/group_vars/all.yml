@@ -95,6 +95,8 @@ config:
     endpoint: "http://localhost:4317"
     service_name: "bytefreezer-control"
     scrape_interval_seconds: 60
+    metrics_host: "0.0.0.0"
+    metrics_port: 9091
   
   # Housekeeping configuration
   housekeeping:

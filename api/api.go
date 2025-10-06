@@ -85,6 +85,13 @@ func (api *API) NewRouter() *web.Service {
 	service.Put("/api/v1/accounts/{accountId}/tenants/{tenantId}", api.UpdateTenant())
 	service.Delete("/api/v1/accounts/{accountId}/tenants/{tenantId}", api.DeleteTenant())
 
+	// Dataset management endpoints (scoped to tenant)
+	service.Get("/api/v1/tenants/{tenantId}/datasets", api.ListDatasets())
+	service.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}", api.GetDataset())
+	service.Post("/api/v1/tenants/{tenantId}/datasets", api.CreateDataset())
+	service.Put("/api/v1/tenants/{tenantId}/datasets/{datasetId}", api.UpdateDataset())
+	service.Delete("/api/v1/tenants/{tenantId}/datasets/{datasetId}", api.DeleteDataset())
+
 	// API documentation
 	service.Docs("/v1/docs", swgui.New)
 

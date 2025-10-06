@@ -2,7 +2,10 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base32"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/n0needt0/bytefreezer-control/middleware"
@@ -10,6 +13,23 @@ import (
 	"github.com/swaggest/usecase"
 	usecaseStatus "github.com/swaggest/usecase/status"
 )
+
+// GenerateShortID generates a short, URL-safe ID (12 characters)
+func GenerateShortID() string {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
+
+	encoded := base32.StdEncoding.EncodeToString(b)
+	id := strings.ToLower(strings.TrimRight(encoded, "="))
+
+	if len(id) > 12 {
+		id = id[:12]
+	}
+
+	return id
+}
 
 // HealthResponse represents health check response
 type HealthResponse struct {
@@ -564,6 +584,216 @@ func (api *API) Login() usecase.Interactor {
 	u.SetDescription("Authenticates a user and returns a JWT token")
 	u.SetTags("auth")
 	// u.SetExpectedErrors(usecaseStatus.Unauthorized401, usecaseStatus.Internal)
+
+	return u
+}
+
+// Dataset API handlers
+
+// ListDatasets returns all datasets for a tenant
+func (api *API) ListDatasets() usecase.Interactor {
+	type listDatasetsInput struct {
+		TenantID string `path:"tenantId" required:"true"`
+		Limit    int    `query:"limit"`
+	}
+
+	type listDatasetsOutput struct {
+		Items []storage.Dataset `json:"items"`
+		Total int               `json:"total"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input listDatasetsInput, output *listDatasetsOutput) error {
+		api.Services.IncrementAPIRequests()
+		api.Services.IncrementDatabaseQueries()
+
+		if api.Services.Storage == nil {
+			return fmt.Errorf("storage not initialized")
+		}
+
+		opts := storage.ListOptions{
+			Limit: input.Limit,
+		}
+
+		result, err := api.Services.Storage.ListDatasets(ctx, input.TenantID, opts)
+		if err != nil {
+			return fmt.Errorf("failed to list datasets: %w", err)
+		}
+
+		output.Items = result.Items
+		output.Total = result.Total
+		return nil
+	})
+
+	u.SetTitle("List Datasets")
+	u.SetDescription("Returns all datasets for a tenant")
+	u.SetTags("datasets")
+
+	return u
+}
+
+// GetDataset returns a specific dataset
+func (api *API) GetDataset() usecase.Interactor {
+	type getDatasetInput struct {
+		TenantID  string `path:"tenantId" required:"true"`
+		DatasetID string `path:"datasetId" required:"true"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input getDatasetInput, output *storage.Dataset) error {
+		api.Services.IncrementAPIRequests()
+		api.Services.IncrementDatabaseQueries()
+
+		if api.Services.Storage == nil {
+			return fmt.Errorf("storage not initialized")
+		}
+
+		dataset, err := api.Services.Storage.GetDataset(ctx, input.TenantID, input.DatasetID)
+		if err != nil {
+			return fmt.Errorf("failed to get dataset: %w", err)
+		}
+
+		*output = *dataset
+		return nil
+	})
+
+	u.SetTitle("Get Dataset")
+	u.SetDescription("Returns a specific dataset by ID")
+	u.SetTags("datasets")
+	u.SetExpectedErrors(usecaseStatus.NotFound)
+
+	return u
+}
+
+// CreateDataset creates a new dataset
+func (api *API) CreateDataset() usecase.Interactor {
+	type createDatasetInput struct {
+		TenantID    string                `path:"tenantId" required:"true"`
+		Name        string                `json:"name" required:"true"`
+		Description string                `json:"description"`
+		Config      storage.DatasetConfig `json:"config"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input createDatasetInput, output *storage.Dataset) error {
+		api.Services.IncrementAPIRequests()
+		api.Services.IncrementDatabaseQueries()
+
+		if api.Services.Storage == nil {
+			return fmt.Errorf("storage not initialized")
+		}
+
+		dataset := &storage.Dataset{
+			ID:          GenerateShortID(),
+			TenantID:    input.TenantID,
+			Name:        input.Name,
+			Description: input.Description,
+			Active:      true,
+			Status:      "active",
+			Config:      input.Config,
+		}
+
+		if err := api.Services.Storage.CreateDataset(ctx, dataset); err != nil {
+			return fmt.Errorf("failed to create dataset: %w", err)
+		}
+
+		*output = *dataset
+		return nil
+	})
+
+	u.SetTitle("Create Dataset")
+	u.SetDescription("Creates a new dataset for a tenant")
+	u.SetTags("datasets")
+	u.SetExpectedErrors(usecaseStatus.InvalidArgument, usecaseStatus.AlreadyExists)
+
+	return u
+}
+
+// UpdateDataset updates an existing dataset
+func (api *API) UpdateDataset() usecase.Interactor {
+	type updateDatasetInput struct {
+		TenantID    string                 `path:"tenantId" required:"true"`
+		DatasetID   string                 `path:"datasetId" required:"true"`
+		Name        string                 `json:"name"`
+		Description string                 `json:"description"`
+		Active      *bool                  `json:"active"`
+		Config      *storage.DatasetConfig `json:"config"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input updateDatasetInput, output *storage.Dataset) error {
+		api.Services.IncrementAPIRequests()
+		api.Services.IncrementDatabaseQueries()
+
+		if api.Services.Storage == nil {
+			return fmt.Errorf("storage not initialized")
+		}
+
+		// Get existing dataset
+		dataset, err := api.Services.Storage.GetDataset(ctx, input.TenantID, input.DatasetID)
+		if err != nil {
+			return fmt.Errorf("dataset not found: %w", err)
+		}
+
+		// Update fields
+		if input.Name != "" {
+			dataset.Name = input.Name
+		}
+		if input.Description != "" {
+			dataset.Description = input.Description
+		}
+		if input.Active != nil {
+			dataset.Active = *input.Active
+		}
+		if input.Config != nil {
+			dataset.Config = *input.Config
+		}
+
+		if err := api.Services.Storage.UpdateDataset(ctx, dataset); err != nil {
+			return fmt.Errorf("failed to update dataset: %w", err)
+		}
+
+		*output = *dataset
+		return nil
+	})
+
+	u.SetTitle("Update Dataset")
+	u.SetDescription("Updates an existing dataset")
+	u.SetTags("datasets")
+	u.SetExpectedErrors(usecaseStatus.NotFound, usecaseStatus.InvalidArgument)
+
+	return u
+}
+
+// DeleteDataset deletes a dataset
+func (api *API) DeleteDataset() usecase.Interactor {
+	type deleteDatasetInput struct {
+		TenantID  string `path:"tenantId" required:"true"`
+		DatasetID string `path:"datasetId" required:"true"`
+	}
+
+	type deleteDatasetOutput struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input deleteDatasetInput, output *deleteDatasetOutput) error {
+		api.Services.IncrementAPIRequests()
+		api.Services.IncrementDatabaseQueries()
+
+		if api.Services.Storage == nil {
+			return fmt.Errorf("storage not initialized")
+		}
+
+		if err := api.Services.Storage.DeleteDataset(ctx, input.TenantID, input.DatasetID); err != nil {
+			return fmt.Errorf("failed to delete dataset: %w", err)
+		}
+
+		output.Success = true
+		output.Message = fmt.Sprintf("Dataset %s deleted successfully", input.DatasetID)
+		return nil
+	})
+
+	u.SetTitle("Delete Dataset")
+	u.SetDescription("Deletes a dataset")
+	u.SetTags("datasets")
+	u.SetExpectedErrors(usecaseStatus.NotFound)
 
 	return u
 }

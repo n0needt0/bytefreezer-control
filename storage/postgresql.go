@@ -627,14 +627,19 @@ func (p *PostgreSQLStorage) ListDatasets(ctx context.Context, tenantID string, o
 	for rows.Next() {
 		var dataset Dataset
 		var configJSON, metricsJSON []byte
+		var lastError sql.NullString
 
 		err := rows.Scan(
 			&dataset.ID, &dataset.TenantID, &dataset.Name, &dataset.Description,
 			&dataset.Active, &dataset.Status, &dataset.CreatedAt, &dataset.UpdatedAt,
 			&configJSON, &dataset.RecordsProcessed, &dataset.LastProcessedAt,
-			&dataset.ErrorCount, &dataset.LastError, &metricsJSON)
+			&dataset.ErrorCount, &lastError, &metricsJSON)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan dataset: %w", err)
+		}
+
+		if lastError.Valid {
+			dataset.LastError = lastError.String
 		}
 
 		if err := json.Unmarshal(configJSON, &dataset.Config); err != nil {
@@ -642,9 +647,7 @@ func (p *PostgreSQLStorage) ListDatasets(ctx context.Context, tenantID string, o
 		}
 
 		if len(metricsJSON) > 0 {
-			if err := json.Unmarshal(metricsJSON, &dataset.ProcessingMetrics); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal processing metrics: %w", err)
-			}
+			dataset.ProcessingMetrics = string(metricsJSON)
 		}
 
 		datasets = append(datasets, dataset)

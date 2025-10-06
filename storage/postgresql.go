@@ -75,7 +75,7 @@ func (p *PostgreSQLStorage) CreateAccount(ctx context.Context, account *Account)
 	}
 
 	query := `
-		INSERT INTO accounts (id, name, email, active, created_at, updated_at, config)
+		INSERT INTO control_accounts (id, name, email, active, created_at, updated_at, config)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)`
 
 	_, err = p.db.ExecContext(ctx, query,
@@ -95,7 +95,7 @@ func (p *PostgreSQLStorage) CreateAccount(ctx context.Context, account *Account)
 func (p *PostgreSQLStorage) GetAccount(ctx context.Context, id string) (*Account, error) {
 	query := `
 		SELECT id, name, email, active, created_at, updated_at, config
-		FROM accounts WHERE id = $1`
+		FROM control_accounts WHERE id = $1`
 
 	var account Account
 	var configJSON []byte
@@ -121,7 +121,7 @@ func (p *PostgreSQLStorage) GetAccount(ctx context.Context, id string) (*Account
 func (p *PostgreSQLStorage) GetAccountByEmail(ctx context.Context, email string) (*Account, error) {
 	query := `
 		SELECT id, name, email, active, created_at, updated_at, config
-		FROM accounts WHERE email = $1`
+		FROM control_accounts WHERE email = $1`
 
 	var account Account
 	var configJSON []byte
@@ -153,7 +153,7 @@ func (p *PostgreSQLStorage) UpdateAccount(ctx context.Context, account *Account)
 	}
 
 	query := `
-		UPDATE accounts
+		UPDATE control_accounts
 		SET name = $1, email = $2, active = $3, updated_at = $4, config = $5
 		WHERE id = $6`
 
@@ -180,7 +180,7 @@ func (p *PostgreSQLStorage) UpdateAccount(ctx context.Context, account *Account)
 }
 
 func (p *PostgreSQLStorage) DeleteAccount(ctx context.Context, id string) error {
-	query := `DELETE FROM accounts WHERE id = $1`
+	query := `DELETE FROM control_accounts WHERE id = $1`
 	result, err := p.db.ExecContext(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete account: %w", err)
@@ -204,7 +204,7 @@ func (p *PostgreSQLStorage) ListAccounts(ctx context.Context, opts ListOptions) 
 
 	query := `
 		SELECT id, name, email, active, created_at, updated_at, config
-		FROM accounts
+		FROM control_accounts
 		ORDER BY created_at DESC
 		LIMIT $1`
 
@@ -260,7 +260,7 @@ func (p *PostgreSQLStorage) CreateTenant(ctx context.Context, tenant *Tenant) er
 	}
 
 	query := `
-		INSERT INTO tenants (id, account_id, name, description, active, created_at, updated_at, config)
+		INSERT INTO control_tenants (id, account_id, name, description, active, created_at, updated_at, config)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 
 	_, err = p.db.ExecContext(ctx, query,
@@ -280,7 +280,7 @@ func (p *PostgreSQLStorage) CreateTenant(ctx context.Context, tenant *Tenant) er
 func (p *PostgreSQLStorage) GetTenant(ctx context.Context, accountID, tenantID string) (*Tenant, error) {
 	query := `
 		SELECT id, account_id, name, description, active, created_at, updated_at, config
-		FROM tenants WHERE id = $1 AND account_id = $2`
+		FROM control_tenants WHERE id = $1 AND account_id = $2`
 
 	var tenant Tenant
 	var configJSON []byte
@@ -312,7 +312,7 @@ func (p *PostgreSQLStorage) UpdateTenant(ctx context.Context, tenant *Tenant) er
 	}
 
 	query := `
-		UPDATE tenants
+		UPDATE control_tenants
 		SET name = $1, description = $2, active = $3, updated_at = $4, config = $5
 		WHERE id = $6 AND account_id = $7`
 
@@ -337,7 +337,7 @@ func (p *PostgreSQLStorage) UpdateTenant(ctx context.Context, tenant *Tenant) er
 }
 
 func (p *PostgreSQLStorage) DeleteTenant(ctx context.Context, accountID, tenantID string) error {
-	query := `DELETE FROM tenants WHERE id = $1 AND account_id = $2`
+	query := `DELETE FROM control_tenants WHERE id = $1 AND account_id = $2`
 
 	result, err := p.db.ExecContext(ctx, query, tenantID, accountID)
 	if err != nil {
@@ -363,7 +363,7 @@ func (p *PostgreSQLStorage) ListTenants(ctx context.Context, accountID string, o
 
 	query := `
 		SELECT id, account_id, name, description, active, created_at, updated_at, config
-		FROM tenants
+		FROM control_tenants
 		WHERE account_id = $1
 		ORDER BY created_at DESC
 		LIMIT $2`
@@ -402,7 +402,7 @@ func (p *PostgreSQLStorage) ListTenants(ctx context.Context, accountID string, o
 func (p *PostgreSQLStorage) FindTenantsBySubscriptionTier(ctx context.Context, tier string) ([]*Tenant, error) {
 	query := `
 		SELECT id, account_id, name, description, active, created_at, updated_at, config
-		FROM tenants
+		FROM control_tenants
 		WHERE config->'subscription'->>'tier' = $1`
 
 	return p.queryTenants(ctx, query, tier)
@@ -411,7 +411,7 @@ func (p *PostgreSQLStorage) FindTenantsBySubscriptionTier(ctx context.Context, t
 func (p *PostgreSQLStorage) FindTenantsByOrganizationSize(ctx context.Context, size string) ([]*Tenant, error) {
 	query := `
 		SELECT id, account_id, name, description, active, created_at, updated_at, config
-		FROM tenants
+		FROM control_tenants
 		WHERE config->'organization'->>'size' = $1`
 
 	return p.queryTenants(ctx, query, size)
@@ -420,7 +420,7 @@ func (p *PostgreSQLStorage) FindTenantsByOrganizationSize(ctx context.Context, s
 func (p *PostgreSQLStorage) GetTenantsWithNotificationEnabled(ctx context.Context, notificationType string) ([]*Tenant, error) {
 	query := `
 		SELECT id, account_id, name, description, active, created_at, updated_at, config
-		FROM tenants
+		FROM control_tenants
 		WHERE config->'notifications'->>$1 = 'true'`
 
 	return p.queryTenants(ctx, query, notificationType)
@@ -480,7 +480,7 @@ func (p *PostgreSQLStorage) CreateDataset(ctx context.Context, dataset *Dataset)
 	}
 
 	query := `
-		INSERT INTO datasets (id, tenant_id, name, description, active, status, created_at, updated_at, 
+		INSERT INTO control_datasets (id, tenant_id, name, description, active, status, created_at, updated_at, 
 			config, records_processed, last_processed_at, error_count, last_error, processing_metrics)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
 
@@ -501,7 +501,7 @@ func (p *PostgreSQLStorage) GetDataset(ctx context.Context, tenantID, datasetID 
 	query := `
 		SELECT id, tenant_id, name, description, active, status, created_at, updated_at,
 			config, records_processed, last_processed_at, error_count, last_error, processing_metrics
-		FROM datasets WHERE tenant_id = $1 AND id = $2`
+		FROM control_datasets WHERE tenant_id = $1 AND id = $2`
 
 	var dataset Dataset
 	var configJSON, metricsJSON []byte
@@ -546,7 +546,7 @@ func (p *PostgreSQLStorage) UpdateDataset(ctx context.Context, dataset *Dataset)
 	}
 
 	query := `
-		UPDATE datasets 
+		UPDATE control_datasets 
 		SET name = $1, description = $2, active = $3, status = $4, updated_at = $5,
 			config = $6, records_processed = $7, last_processed_at = $8, 
 			error_count = $9, last_error = $10, processing_metrics = $11
@@ -575,7 +575,7 @@ func (p *PostgreSQLStorage) UpdateDataset(ctx context.Context, dataset *Dataset)
 }
 
 func (p *PostgreSQLStorage) DeleteDataset(ctx context.Context, tenantID, datasetID string) error {
-	query := `DELETE FROM datasets WHERE tenant_id = $1 AND id = $2`
+	query := `DELETE FROM control_datasets WHERE tenant_id = $1 AND id = $2`
 
 	result, err := p.db.ExecContext(ctx, query, tenantID, datasetID)
 	if err != nil {
@@ -598,7 +598,7 @@ func (p *PostgreSQLStorage) ListDatasets(ctx context.Context, tenantID string, o
 	query := `
 		SELECT id, tenant_id, name, description, active, status, created_at, updated_at,
 			config, records_processed, last_processed_at, error_count, last_error, processing_metrics
-		FROM datasets WHERE tenant_id = $1`
+		FROM control_datasets WHERE tenant_id = $1`
 	
 	args := []interface{}{tenantID}
 	argIndex := 2
@@ -652,7 +652,7 @@ func (p *PostgreSQLStorage) ListDatasets(ctx context.Context, tenantID string, o
 	}
 
 	// Get total count
-	countQuery := `SELECT COUNT(*) FROM datasets WHERE tenant_id = $1`
+	countQuery := `SELECT COUNT(*) FROM control_datasets WHERE tenant_id = $1`
 	countArgs := []interface{}{tenantID}
 	if opts.Filter != "" {
 		countQuery += " AND (name ILIKE $2 OR description ILIKE $3)"
@@ -677,7 +677,7 @@ func (p *PostgreSQLStorage) FindDatasetsByStatus(ctx context.Context, tenantID, 
 	query := `
 		SELECT id, tenant_id, name, description, active, status, created_at, updated_at,
 			config, records_processed, last_processed_at, error_count, last_error, processing_metrics
-		FROM datasets WHERE tenant_id = $1 AND status = $2`
+		FROM control_datasets WHERE tenant_id = $1 AND status = $2`
 
 	return p.queryDatasets(ctx, query, tenantID, status)
 }
@@ -686,7 +686,7 @@ func (p *PostgreSQLStorage) FindDatasetsBySourceType(ctx context.Context, tenant
 	query := `
 		SELECT id, tenant_id, name, description, active, status, created_at, updated_at,
 			config, records_processed, last_processed_at, error_count, last_error, processing_metrics
-		FROM datasets 
+		FROM control_datasets 
 		WHERE tenant_id = $1 AND config->>'source'->>'type' = $2`
 
 	return p.queryDatasets(ctx, query, tenantID, sourceType)
@@ -730,7 +730,7 @@ func (p *PostgreSQLStorage) queryDatasets(ctx context.Context, query string, arg
 }
 
 func (p *PostgreSQLStorage) GetDatasetMetrics(ctx context.Context, tenantID, datasetID string) (*DatasetMetrics, error) {
-	query := `SELECT processing_metrics FROM datasets WHERE tenant_id = $1 AND id = $2`
+	query := `SELECT processing_metrics FROM control_datasets WHERE tenant_id = $1 AND id = $2`
 
 	var metricsJSON []byte
 	err := p.db.QueryRowContext(ctx, query, tenantID, datasetID).Scan(&metricsJSON)
@@ -757,7 +757,7 @@ func (p *PostgreSQLStorage) UpdateDatasetMetrics(ctx context.Context, tenantID, 
 		return fmt.Errorf("failed to marshal dataset metrics: %w", err)
 	}
 
-	query := `UPDATE datasets SET processing_metrics = $1, updated_at = $2 WHERE tenant_id = $3 AND id = $4`
+	query := `UPDATE control_datasets SET processing_metrics = $1, updated_at = $2 WHERE tenant_id = $3 AND id = $4`
 
 	result, err := p.db.ExecContext(ctx, query, metricsJSON, time.Now(), tenantID, datasetID)
 	if err != nil {

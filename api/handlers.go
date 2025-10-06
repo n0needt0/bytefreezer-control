@@ -254,7 +254,7 @@ func (api *API) GetServiceStatus() usecase.Interactor {
 		ServiceName string `path:"serviceName"`
 	}
 
-	u := usecase.NewInteractor(func(ctx context.Context, input serviceInput, output **services.ServiceStatus) error {
+	u := usecase.NewInteractor(func(ctx context.Context, input serviceInput, output *services.ServiceStatus) error {
 		api.Services.IncrementAPIRequests()
 		api.Services.IncrementHealthChecks()
 
@@ -263,7 +263,7 @@ func (api *API) GetServiceStatus() usecase.Interactor {
 			return usecaseStatus.Wrap(fmt.Errorf("failed to check service %s: %w", input.ServiceName, err), usecaseStatus.Internal)
 		}
 
-		*output = serviceStatus
+		*output = *serviceStatus
 		return nil
 	})
 

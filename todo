@@ -8,9 +8,6 @@ Avoid flattery, compliments, or positive language. Be clear and concise. Do not 
 
 requirements:
 
-- i want you to remove all unusind functions.
-- a want you to clean up awx templates, please use examples from piper
-- i assume you familiar about bytefreezer.
-the control service provides data api to -receiver, -piper and -packer, for dev they all use fixed data., but now i would like to figure out how to replace 
-hardcoded dev settings in all of the bytefreezer microservices with control provided apis. please suggest your plan
 
+- all tables used by control should be prefixed with control_
+- please rework, dont bother with backwards compatibility drop all and recreate.

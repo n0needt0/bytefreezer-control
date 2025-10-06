@@ -6,7 +6,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.0
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.10.9
-	github.com/n0needt0/go-goodies/log v0.0.0-20250630220836-1971f86125fe
+	github.com/n0needt0/go-goodies/log v0.0.0-20250911153747-5be7cbbfc35a
 	github.com/prometheus/client_golang v1.23.2
 	github.com/swaggest/openapi-go v0.2.49
 	github.com/swaggest/rest v0.2.65

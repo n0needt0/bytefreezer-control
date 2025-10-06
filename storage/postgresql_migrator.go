@@ -160,7 +160,7 @@ func (m *PostgreSQLMigrator) Reset(ctx context.Context) error {
 // ensureMigrationsTable creates the migrations table if it doesn't exist
 func (m *PostgreSQLMigrator) ensureMigrationsTable(ctx context.Context) error {
 	query := `
-		CREATE TABLE IF NOT EXISTS migrations (
+		CREATE TABLE IF NOT EXISTS control_migrations (
 			version INTEGER PRIMARY KEY,
 			name VARCHAR(255) NOT NULL,
 			description TEXT,
@@ -173,7 +173,7 @@ func (m *PostgreSQLMigrator) ensureMigrationsTable(ctx context.Context) error {
 
 // getAppliedMigrations returns all applied migrations
 func (m *PostgreSQLMigrator) getAppliedMigrations(ctx context.Context) ([]Migration, error) {
-	query := `SELECT version, name, description, applied_at FROM migrations ORDER BY version`
+	query := `SELECT version, name, description, applied_at FROM control_migrations ORDER BY version`
 
 	rows, err := m.db.QueryContext(ctx, query)
 	if err != nil {
@@ -251,7 +251,7 @@ func (m *PostgreSQLMigrator) applyMigration(ctx context.Context, migration Migra
 	}
 
 	// Record migration as applied
-	recordQuery := `INSERT INTO migrations (version, name, description, applied_at) VALUES ($1, $2, $3, $4)`
+	recordQuery := `INSERT INTO control_migrations (version, name, description, applied_at) VALUES ($1, $2, $3, $4)`
 	_, err = tx.ExecContext(ctx, recordQuery, migration.Version, migration.Name, migration.Description, time.Now())
 	if err != nil {
 		return fmt.Errorf("failed to record migration: %w", err)
@@ -289,7 +289,7 @@ func (m *PostgreSQLMigrator) rollbackMigration(ctx context.Context, migration Mi
 	}
 
 	// Remove migration record
-	deleteQuery := `DELETE FROM migrations WHERE version = $1`
+	deleteQuery := `DELETE FROM control_migrations WHERE version = $1`
 	_, err = tx.ExecContext(ctx, deleteQuery, migration.Version)
 	if err != nil {
 		return fmt.Errorf("failed to remove migration record: %w", err)
@@ -312,6 +312,12 @@ func (m *PostgreSQLMigrator) freshInstall(ctx context.Context) error {
 // reset drops all tables
 func (m *PostgreSQLMigrator) reset(ctx context.Context) error {
 	dropQueries := []string{
+		`DROP TABLE IF EXISTS control_api_keys CASCADE`,
+		`DROP TABLE IF EXISTS control_datasets CASCADE`,
+		`DROP TABLE IF EXISTS control_tenants CASCADE`,
+		`DROP TABLE IF EXISTS control_accounts CASCADE`,
+		`DROP TABLE IF EXISTS control_migrations CASCADE`,
+		// Drop old tables without prefix for cleanup
 		`DROP TABLE IF EXISTS api_keys CASCADE`,
 		`DROP TABLE IF EXISTS datasets CASCADE`,
 		`DROP TABLE IF EXISTS tenants CASCADE`,
@@ -335,7 +341,7 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 	case 1:
 		return `
 			-- Create accounts table
-			CREATE TABLE IF NOT EXISTS accounts (
+			CREATE TABLE IF NOT EXISTS control_accounts (
 				id VARCHAR(36) PRIMARY KEY,
 				name VARCHAR(255) NOT NULL,
 				email VARCHAR(255) UNIQUE NOT NULL,
@@ -347,9 +353,9 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 			);
 
 			-- Create tenants table (belongs to accounts)
-			CREATE TABLE IF NOT EXISTS tenants (
+			CREATE TABLE IF NOT EXISTS control_tenants (
 				id VARCHAR(36) PRIMARY KEY,
-				account_id VARCHAR(36) NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+				account_id VARCHAR(36) NOT NULL REFERENCES control_accounts(id) ON DELETE CASCADE,
 				name VARCHAR(255) NOT NULL,
 				description TEXT,
 				active BOOLEAN NOT NULL DEFAULT true,
@@ -361,9 +367,9 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 			);
 
 			-- Create datasets table (belongs to tenants)
-			CREATE TABLE IF NOT EXISTS datasets (
+			CREATE TABLE IF NOT EXISTS control_datasets (
 				id VARCHAR(36) PRIMARY KEY,
-				tenant_id VARCHAR(36) NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+				tenant_id VARCHAR(36) NOT NULL REFERENCES control_tenants(id) ON DELETE CASCADE,
 				name VARCHAR(255) NOT NULL,
 				description TEXT,
 				active BOOLEAN NOT NULL DEFAULT true,
@@ -381,9 +387,9 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 			);
 
 			-- Create api_keys table for authentication
-			CREATE TABLE IF NOT EXISTS api_keys (
+			CREATE TABLE IF NOT EXISTS control_api_keys (
 				id VARCHAR(36) PRIMARY KEY,
-				account_id VARCHAR(36) NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+				account_id VARCHAR(36) NOT NULL REFERENCES control_accounts(id) ON DELETE CASCADE,
 				name VARCHAR(255) NOT NULL,
 				key_hash VARCHAR(255) NOT NULL UNIQUE,
 				permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -397,41 +403,41 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 	case 2:
 		return `
 			-- Add indexes for performance
-			CREATE INDEX idx_accounts_email ON accounts(email);
-			CREATE INDEX idx_accounts_active ON accounts(active);
-			CREATE INDEX idx_accounts_created_at ON accounts(created_at);
-			CREATE INDEX idx_accounts_instance ON accounts(instance_id);
+			CREATE INDEX idx_control_accounts_email ON control_accounts(email);
+			CREATE INDEX idx_control_accounts_active ON control_accounts(active);
+			CREATE INDEX idx_control_accounts_created_at ON control_accounts(created_at);
+			CREATE INDEX idx_control_accounts_instance ON control_accounts(instance_id);
 
-			CREATE INDEX idx_tenants_account_id ON tenants(account_id);
-			CREATE INDEX idx_tenants_active ON tenants(active);
-			CREATE INDEX idx_tenants_created_at ON tenants(created_at);
-			CREATE INDEX idx_tenants_instance ON tenants(instance_id);
+			CREATE INDEX idx_control_tenants_account_id ON control_tenants(account_id);
+			CREATE INDEX idx_control_tenants_active ON control_tenants(active);
+			CREATE INDEX idx_control_tenants_created_at ON control_tenants(created_at);
+			CREATE INDEX idx_control_tenants_instance ON control_tenants(instance_id);
 
-			CREATE INDEX idx_datasets_tenant_id ON datasets(tenant_id);
-			CREATE INDEX idx_datasets_status ON datasets(status);
-			CREATE INDEX idx_datasets_active ON datasets(active);
-			CREATE INDEX idx_datasets_created_at ON datasets(created_at);
-			CREATE INDEX idx_datasets_last_processed_at ON datasets(last_processed_at);
-			CREATE INDEX idx_datasets_instance ON datasets(instance_id);
+			CREATE INDEX idx_control_datasets_tenant_id ON control_datasets(tenant_id);
+			CREATE INDEX idx_control_datasets_status ON control_datasets(status);
+			CREATE INDEX idx_control_datasets_active ON control_datasets(active);
+			CREATE INDEX idx_control_datasets_created_at ON control_datasets(created_at);
+			CREATE INDEX idx_control_datasets_last_processed_at ON control_datasets(last_processed_at);
+			CREATE INDEX idx_control_datasets_instance ON control_datasets(instance_id);
 
-			CREATE INDEX idx_api_keys_account_id ON api_keys(account_id);
-			CREATE INDEX idx_api_keys_key_hash ON api_keys(key_hash);
-			CREATE INDEX idx_api_keys_active ON api_keys(active);
-			CREATE INDEX idx_api_keys_instance ON api_keys(instance_id);`
+			CREATE INDEX idx_control_api_keys_account_id ON control_api_keys(account_id);
+			CREATE INDEX idx_control_api_keys_key_hash ON control_api_keys(key_hash);
+			CREATE INDEX idx_control_api_keys_active ON control_api_keys(active);
+			CREATE INDEX idx_control_api_keys_instance ON control_api_keys(instance_id);`
 
 	case 3:
 		return `
 			-- Add GIN indexes for JSONB config fields
-			CREATE INDEX idx_accounts_config_gin ON accounts USING gin(config);
-			CREATE INDEX idx_tenants_config_gin ON tenants USING gin(config);
-			CREATE INDEX idx_datasets_config_gin ON datasets USING gin(config);
-			CREATE INDEX idx_datasets_metrics_gin ON datasets USING gin(processing_metrics);
-			CREATE INDEX idx_api_keys_permissions_gin ON api_keys USING gin(permissions);
+			CREATE INDEX idx_control_accounts_config_gin ON control_accounts USING gin(config);
+			CREATE INDEX idx_control_tenants_config_gin ON control_tenants USING gin(config);
+			CREATE INDEX idx_control_datasets_config_gin ON control_datasets USING gin(config);
+			CREATE INDEX idx_control_datasets_metrics_gin ON control_datasets USING gin(processing_metrics);
+			CREATE INDEX idx_control_api_keys_permissions_gin ON control_api_keys USING gin(permissions);
 
 			-- Add specific indexes for common JSONB queries
-			CREATE INDEX idx_tenants_subscription_tier ON tenants USING gin((config->'subscription'->>'tier'));
-			CREATE INDEX idx_tenants_org_size ON tenants USING gin((config->'organization'->>'size'));
-			CREATE INDEX idx_datasets_source_type ON datasets USING gin((config->'source'->>'type'));`
+			CREATE INDEX idx_control_tenants_subscription_tier ON control_tenants USING gin((config->'subscription'->>'tier'));
+			CREATE INDEX idx_control_tenants_org_size ON control_tenants USING gin((config->'organization'->>'size'));
+			CREATE INDEX idx_control_datasets_source_type ON control_datasets USING gin((config->'source'->>'type'));`
 
 	default:
 		return ""
@@ -443,38 +449,42 @@ func (m *PostgreSQLMigrator) getRollbackSQL(version int) string {
 	switch version {
 	case 1:
 		return `
-			DROP TABLE IF EXISTS api_keys CASCADE;
-			DROP TABLE IF EXISTS datasets CASCADE;
-			DROP TABLE IF EXISTS tenants CASCADE;
-			DROP TABLE IF EXISTS accounts CASCADE;`
+			DROP TABLE IF EXISTS control_api_keys CASCADE;
+			DROP TABLE IF EXISTS control_datasets CASCADE;
+			DROP TABLE IF EXISTS control_tenants CASCADE;
+			DROP TABLE IF EXISTS control_accounts CASCADE;`
 
 	case 2:
 		return `
-			DROP INDEX IF EXISTS idx_api_keys_active;
-			DROP INDEX IF EXISTS idx_api_keys_key_hash;
-			DROP INDEX IF EXISTS idx_api_keys_account_id;
-			DROP INDEX IF EXISTS idx_datasets_last_processed_at;
-			DROP INDEX IF EXISTS idx_datasets_created_at;
-			DROP INDEX IF EXISTS idx_datasets_active;
-			DROP INDEX IF EXISTS idx_datasets_status;
-			DROP INDEX IF EXISTS idx_datasets_tenant_id;
-			DROP INDEX IF EXISTS idx_tenants_created_at;
-			DROP INDEX IF EXISTS idx_tenants_active;
-			DROP INDEX IF EXISTS idx_tenants_account_id;
-			DROP INDEX IF EXISTS idx_accounts_created_at;
-			DROP INDEX IF EXISTS idx_accounts_active;
-			DROP INDEX IF EXISTS idx_accounts_email;`
+			DROP INDEX IF EXISTS idx_control_api_keys_instance;
+			DROP INDEX IF EXISTS idx_control_api_keys_active;
+			DROP INDEX IF EXISTS idx_control_api_keys_key_hash;
+			DROP INDEX IF EXISTS idx_control_api_keys_account_id;
+			DROP INDEX IF EXISTS idx_control_datasets_instance;
+			DROP INDEX IF EXISTS idx_control_datasets_last_processed_at;
+			DROP INDEX IF EXISTS idx_control_datasets_created_at;
+			DROP INDEX IF EXISTS idx_control_datasets_active;
+			DROP INDEX IF EXISTS idx_control_datasets_status;
+			DROP INDEX IF EXISTS idx_control_datasets_tenant_id;
+			DROP INDEX IF EXISTS idx_control_tenants_instance;
+			DROP INDEX IF EXISTS idx_control_tenants_created_at;
+			DROP INDEX IF EXISTS idx_control_tenants_active;
+			DROP INDEX IF EXISTS idx_control_tenants_account_id;
+			DROP INDEX IF EXISTS idx_control_accounts_instance;
+			DROP INDEX IF EXISTS idx_control_accounts_created_at;
+			DROP INDEX IF EXISTS idx_control_accounts_active;
+			DROP INDEX IF EXISTS idx_control_accounts_email;`
 
 	case 3:
 		return `
-			DROP INDEX IF EXISTS idx_datasets_source_type;
-			DROP INDEX IF EXISTS idx_tenants_org_size;
-			DROP INDEX IF EXISTS idx_tenants_subscription_tier;
-			DROP INDEX IF EXISTS idx_api_keys_permissions_gin;
-			DROP INDEX IF EXISTS idx_datasets_metrics_gin;
-			DROP INDEX IF EXISTS idx_datasets_config_gin;
-			DROP INDEX IF EXISTS idx_tenants_config_gin;
-			DROP INDEX IF EXISTS idx_accounts_config_gin;`
+			DROP INDEX IF EXISTS idx_control_datasets_source_type;
+			DROP INDEX IF EXISTS idx_control_tenants_org_size;
+			DROP INDEX IF EXISTS idx_control_tenants_subscription_tier;
+			DROP INDEX IF EXISTS idx_control_api_keys_permissions_gin;
+			DROP INDEX IF EXISTS idx_control_datasets_metrics_gin;
+			DROP INDEX IF EXISTS idx_control_datasets_config_gin;
+			DROP INDEX IF EXISTS idx_control_tenants_config_gin;
+			DROP INDEX IF EXISTS idx_control_accounts_config_gin;`
 
 	default:
 		return ""

@@ -17,7 +17,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 )
 
-// InitOtelProvider initializes the OpenTelemetry provider with Prometheus support
+// InitOtelProvider initializes the OpenTelemetry provider with multi-mode support
 func InitOtelProvider(conf *config.Config) func() {
 	if !conf.Otel.Enabled {
 		return nil
@@ -28,7 +28,7 @@ func InitOtelProvider(conf *config.Config) func() {
 	// Create a resource
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
-			semconv.ServiceName(conf.Otel.ServiceName),
+			semconv.ServiceName(conf.App.Name),
 			semconv.ServiceVersion(conf.App.Version),
 		),
 	)
@@ -39,6 +39,7 @@ func InitOtelProvider(conf *config.Config) func() {
 
 	var meterProvider *sdkmetric.MeterProvider
 	var httpServer *http.Server
+	var pushTicker *time.Ticker
 
 	// Prometheus metrics server mode
 	prometheusExporter, err := prometheus.New()
@@ -83,6 +84,11 @@ func InitOtelProvider(conf *config.Config) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
+
+		// Stop push ticker if running
+		if pushTicker != nil {
+			pushTicker.Stop()
+		}
 
 		// Shutdown HTTP server if running
 		if httpServer != nil {

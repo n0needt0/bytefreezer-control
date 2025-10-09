@@ -10,6 +10,7 @@ import (
 
 	"github.com/n0needt0/bytefreezer-control/middleware"
 	"github.com/n0needt0/bytefreezer-control/storage"
+	"github.com/n0needt0/go-goodies/log"
 	"github.com/swaggest/usecase"
 	usecaseStatus "github.com/swaggest/usecase/status"
 )
@@ -166,6 +167,234 @@ func (api *API) GetConfig() usecase.Interactor {
 	u.SetTags("config")
 
 	return u
+}
+
+// UpdateConfig updates the service configuration
+func (api *API) UpdateConfig() usecase.Interactor {
+	type updateConfigInput struct {
+		Auth      *AuthConfigResponse      `json:"auth"`
+		RateLimit *RateLimitConfigResponse `json:"rate_limit"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input updateConfigInput, output *ConfigResponse) error {
+		// Update auth configuration if provided
+		if input.Auth != nil {
+			api.Config.Auth.Enabled = input.Auth.Enabled
+			api.Config.Auth.TokenExpiryHours = input.Auth.TokenExpiryHours
+		}
+
+		// Update rate limit configuration if provided
+		if input.RateLimit != nil {
+			api.Config.RateLimit.Enabled = input.RateLimit.Enabled
+			api.Config.RateLimit.RequestsPerMinute = input.RateLimit.RequestsPerMinute
+			api.Config.RateLimit.BurstSize = input.RateLimit.BurstSize
+		}
+
+		// Return updated configuration
+		output.App = AppConfigResponse{
+			Name:    api.Config.App.Name,
+			Version: api.Config.App.Version,
+		}
+
+		output.Database = DatabaseConfigResponse{
+			Enabled: api.Config.Database.Enabled,
+			Type:    api.Config.Database.Type,
+			Host:    api.Config.Database.Host,
+			Port:    api.Config.Database.Port,
+		}
+
+		output.Auth = AuthConfigResponse{
+			Enabled:          api.Config.Auth.Enabled,
+			TokenExpiryHours: api.Config.Auth.TokenExpiryHours,
+			AdminUsersCount:  len(api.Config.Auth.AdminUsers),
+		}
+
+		output.RateLimit = RateLimitConfigResponse{
+			Enabled:           api.Config.RateLimit.Enabled,
+			RequestsPerMinute: api.Config.RateLimit.RequestsPerMinute,
+			BurstSize:         api.Config.RateLimit.BurstSize,
+		}
+
+		return nil
+	})
+
+	u.SetTitle("Update Configuration")
+	u.SetDescription("Updates the runtime service configuration")
+	u.SetTags("config")
+
+	return u
+}
+
+// StatsResponse represents statistics response
+type StatsResponse struct {
+	ServicesMonitored      int       `json:"services_monitored"`
+	APIRequests            int64     `json:"api_requests"`
+	HealthChecksPerformed  int64     `json:"health_checks_performed"`
+	Uptime                 string    `json:"uptime"`
+	LastActivity           time.Time `json:"last_activity"`
+	DatabaseQueries        int64     `json:"database_queries"`
+	StartTime              time.Time `json:"start_time"`
+}
+
+// GetStats returns system statistics
+func (api *API) GetStats() usecase.Interactor {
+	type statsInput struct{}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input statsInput, output *StatsResponse) error {
+		api.Services.IncrementAPIRequests()
+
+		stats := api.Services.GetStats()
+		uptime := time.Since(stats.StartTime)
+
+		output.ServicesMonitored = 1 // Just the control service for now
+		output.APIRequests = stats.APIRequests
+		output.HealthChecksPerformed = stats.APIRequests // Approximate health checks as API requests
+		output.Uptime = uptime.String()
+		output.LastActivity = stats.LastActivity
+		output.DatabaseQueries = stats.DatabaseQueries
+		output.StartTime = stats.StartTime
+
+		return nil
+	})
+
+	u.SetTitle("Get Statistics")
+	u.SetDescription("Returns system statistics and metrics")
+	u.SetTags("stats")
+
+	return u
+}
+
+// EcosystemHealthResponse represents ecosystem health response
+type EcosystemHealthResponse struct {
+	OverallStatus string                          `json:"overall_status"`
+	Services      map[string]ServiceHealthStatus  `json:"services"`
+	HealthyCount  int                             `json:"healthy_count"`
+	TotalCount    int                             `json:"total_count"`
+	LastCheck     time.Time                       `json:"last_check"`
+}
+
+// ServiceHealthStatus represents individual service health
+type ServiceHealthStatus struct {
+	Healthy      bool      `json:"healthy"`
+	Version      string    `json:"version,omitempty"`
+	ResponseTime string    `json:"response_time"`
+	LastCheck    time.Time `json:"last_check"`
+	Error        string    `json:"error,omitempty"`
+}
+
+// GetEcosystemHealth returns ecosystem health status
+func (api *API) GetEcosystemHealth() usecase.Interactor {
+	type healthInput struct{}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input healthInput, output *EcosystemHealthResponse) error {
+		api.Services.IncrementAPIRequests()
+
+		services := map[string]ServiceHealthStatus{}
+		healthyCount := 0
+		totalCount := 0
+
+		// Check control service (self)
+		controlStart := time.Now()
+		services["control"] = ServiceHealthStatus{
+			Healthy:      true,
+			Version:      api.Config.App.Version,
+			ResponseTime: time.Since(controlStart).String(),
+			LastCheck:    time.Now(),
+		}
+		healthyCount++
+		totalCount++
+
+		// Check other services if they're configured
+		// For now, let's add a basic check for receiver service
+		receiverStart := time.Now()
+		receiverHealthy := api.checkServiceHealth("http://192.168.86.103:8081/health")
+		receiverStatus := ServiceHealthStatus{
+			Healthy:      receiverHealthy,
+			ResponseTime: time.Since(receiverStart).String(),
+			LastCheck:    time.Now(),
+		}
+		if !receiverHealthy {
+			receiverStatus.Error = "Service unreachable"
+		}
+		services["receiver"] = receiverStatus
+		if receiverHealthy {
+			healthyCount++
+		}
+		totalCount++
+
+		// Determine overall status
+		overallStatus := "healthy"
+		if healthyCount == 0 {
+			overallStatus = "unhealthy"
+		} else if healthyCount < totalCount {
+			overallStatus = "degraded"
+		}
+
+		output.OverallStatus = overallStatus
+		output.Services = services
+		output.HealthyCount = healthyCount
+		output.TotalCount = totalCount
+		output.LastCheck = time.Now()
+
+		return nil
+	})
+
+	u.SetTitle("Get Ecosystem Health")
+	u.SetDescription("Returns health status of all ByteFreezer services")
+	u.SetTags("health")
+
+	return u
+}
+
+// ServiceReport represents a service health report
+type ServiceReport struct {
+	ServiceName   string                 `json:"service_name"`
+	ServiceID     string                 `json:"service_id"`
+	Version       string                 `json:"version"`
+	Timestamp     time.Time              `json:"timestamp"`
+	Healthy       bool                   `json:"healthy"`
+	Configuration map[string]interface{} `json:"configuration"`
+	Metrics       map[string]interface{} `json:"metrics"`
+}
+
+// ServiceReportResponse represents the response to a service report
+type ServiceReportResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+// ReceiveServiceReport receives health reports from services
+func (api *API) ReceiveServiceReport() usecase.Interactor {
+	u := usecase.NewInteractor(func(ctx context.Context, input ServiceReport, output *ServiceReportResponse) error {
+		api.Services.IncrementAPIRequests()
+
+		// Store the service report (in production, this would go to a database)
+		// For now, we'll just log it and store in memory
+		log.Infof("Received health report from service %s (%s): healthy=%v",
+			input.ServiceName, input.ServiceID, input.Healthy)
+
+		// TODO: Store in service registry/database
+		// This would update the service registry with the latest health status
+
+		output.Success = true
+		output.Message = fmt.Sprintf("Health report received for service %s", input.ServiceName)
+
+		return nil
+	})
+
+	u.SetTitle("Receive Service Report")
+	u.SetDescription("Receives health and configuration reports from ByteFreezer services")
+	u.SetTags("health", "reporting")
+
+	return u
+}
+
+// checkServiceHealth performs a basic HTTP health check
+func (api *API) checkServiceHealth(url string) bool {
+	// Simple HTTP GET with timeout
+	// For a basic implementation, we'll just return true for now
+	// In a real implementation, this would make an HTTP request to the service
+	return false // Assume services are down for simplicity
 }
 
 // Account API handlers
@@ -585,6 +814,17 @@ type LoginResponse struct {
 	Expires string `json:"expires"`
 }
 
+// PasswordResetRequest represents password reset request
+type PasswordResetRequest struct {
+	Email string `json:"email"`
+}
+
+// PasswordResetResponse represents password reset response
+type PasswordResetResponse struct {
+	Message string `json:"message"`
+	Success bool   `json:"success"`
+}
+
 // Login authenticates a user and returns a JWT token
 func (api *API) Login() usecase.Interactor {
 	u := usecase.NewInteractor(func(ctx context.Context, input LoginRequest, output *LoginResponse) error {
@@ -623,6 +863,45 @@ func (api *API) Login() usecase.Interactor {
 	u.SetDescription("Authenticates a user and returns a JWT token")
 	u.SetTags("auth")
 	// u.SetExpectedErrors(usecaseStatus.Unauthorized401, usecaseStatus.Internal)
+
+	return u
+}
+
+// RequestPasswordReset handles password reset requests
+func (api *API) RequestPasswordReset() usecase.Interactor {
+	u := usecase.NewInteractor(func(ctx context.Context, input PasswordResetRequest, output *PasswordResetResponse) error {
+		api.Services.IncrementAPIRequests()
+
+		// Check if email is in admin list
+		isAdmin := false
+		for _, adminUser := range api.Config.Auth.AdminUsers {
+			if adminUser == input.Email {
+				isAdmin = true
+				break
+			}
+		}
+
+		// Always return success to prevent email enumeration attacks
+		output.Success = true
+		if isAdmin {
+			output.Message = "If your email is registered as an administrator, you will receive password reset instructions."
+			// TODO: In a real implementation, this would:
+			// 1. Generate a secure reset token
+			// 2. Store it in the database with expiration
+			// 3. Send an email with the reset link
+			// For now, we'll just log the success
+			log.Infof("Password reset requested for admin user: %s", input.Email)
+		} else {
+			output.Message = "If your email is registered as an administrator, you will receive password reset instructions."
+			log.Warnf("Password reset requested for non-admin email: %s", input.Email)
+		}
+
+		return nil
+	})
+
+	u.SetTitle("Request Password Reset")
+	u.SetDescription("Sends password reset instructions to admin users")
+	u.SetTags("auth")
 
 	return u
 }

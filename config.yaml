@@ -38,11 +38,13 @@ housekeeping:
 
 # Authentication and authorization
 auth:
-  enabled: false  # Disabled for easier browser testing
+  enabled: true  # Enable authentication for UI testing
   jwt_secret: "your-jwt-secret-key-here"
   token_expiry_hours: 24
   admin_users:
     - "admin@company.com"
+    - "admin@example.com"
+    - "test@example.com"
 
 # Rate limiting
 rate_limit:

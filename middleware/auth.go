@@ -89,6 +89,41 @@ func GenerateToken(username string, isAdmin bool, authConfig config.AuthConfig) 
 	return token.SignedString([]byte(authConfig.JWTSecret))
 }
 
+// ConditionalAuthMiddleware provides JWT authentication middleware that skips public endpoints
+func ConditionalAuthMiddleware(authConfig config.AuthConfig) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip authentication for public endpoints
+			if isPublicEndpoint(r.URL.Path) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Apply authentication for all other endpoints
+			authMiddleware := AuthMiddleware(authConfig)
+			authMiddleware(next).ServeHTTP(w, r)
+		})
+	}
+}
+
+// isPublicEndpoint checks if the endpoint should skip authentication
+func isPublicEndpoint(path string) bool {
+	publicEndpoints := []string{
+		"/api/v1/health",
+		"/api/v1/login",
+		"/api/v1/password-reset",
+		"/api/v1/services/report", // Allow services to report health without auth
+	}
+
+	for _, endpoint := range publicEndpoints {
+		if path == endpoint {
+			return true
+		}
+	}
+
+	return false
+}
+
 // isAdminEndpoint checks if the endpoint requires admin privileges
 func isAdminEndpoint(path string) bool {
 	adminEndpoints := []string{
@@ -103,4 +138,41 @@ func isAdminEndpoint(path string) bool {
 	}
 
 	return false
+}
+
+// CORSMiddleware provides CORS support for the API
+func CORSMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Allow requests from UI development server and production
+			allowedOrigins := []string{
+				"http://localhost:3000",
+				"http://localhost:3001",
+				"http://localhost:3002",
+				"http://localhost:3003",
+				"https://dashboard.bytefreezer.org",
+			}
+
+			origin := r.Header.Get("Origin")
+			for _, allowedOrigin := range allowedOrigins {
+				if origin == allowedOrigin {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+					break
+				}
+			}
+
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Max-Age", "86400")
+
+			// Handle preflight requests
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }

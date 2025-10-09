@@ -504,12 +504,13 @@ func (p *PostgreSQLStorage) GetDataset(ctx context.Context, tenantID, datasetID 
 
 	var dataset Dataset
 	var configJSON, metricsJSON []byte
+	var lastError sql.NullString
 
 	err := p.db.QueryRowContext(ctx, query, tenantID, datasetID).Scan(
 		&dataset.ID, &dataset.TenantID, &dataset.Name, &dataset.Description,
 		&dataset.Active, &dataset.Status, &dataset.CreatedAt, &dataset.UpdatedAt,
 		&configJSON, &dataset.RecordsProcessed, &dataset.LastProcessedAt,
-		&dataset.ErrorCount, &dataset.LastError, &metricsJSON)
+		&dataset.ErrorCount, &lastError, &metricsJSON)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -518,14 +519,20 @@ func (p *PostgreSQLStorage) GetDataset(ctx context.Context, tenantID, datasetID 
 		return nil, fmt.Errorf("failed to get dataset: %w", err)
 	}
 
+	// Handle NULL last_error
+	if lastError.Valid {
+		dataset.LastError = lastError.String
+	} else {
+		dataset.LastError = ""
+	}
+
 	if err := json.Unmarshal(configJSON, &dataset.Config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal dataset config: %w", err)
 	}
 
+	// ProcessingMetrics is stored as JSON string, not object
 	if len(metricsJSON) > 0 {
-		if err := json.Unmarshal(metricsJSON, &dataset.ProcessingMetrics); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal processing metrics: %w", err)
-		}
+		dataset.ProcessingMetrics = string(metricsJSON)
 	}
 
 	return &dataset, nil

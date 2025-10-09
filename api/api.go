@@ -46,6 +46,10 @@ func (api *API) NewRouter() *web.Service {
 	// Apply defaults for decoder factory
 	service.DecoderFactory.ApplyDefaults = true
 
+	// Add CORS middleware
+	service.Use(middleware.CORSMiddleware())
+	log.Info("CORS middleware enabled")
+
 	// Add rate limiting middleware if enabled
 	if api.Config.RateLimit.Enabled {
 		rateLimiter := middleware.NewRateLimiter(api.Config.RateLimit)
@@ -53,9 +57,9 @@ func (api *API) NewRouter() *web.Service {
 		log.Info("Rate limiting middleware enabled")
 	}
 
-	// Add authentication middleware if enabled
+	// Add authentication middleware if enabled (but exclude public endpoints)
 	if api.Config.Auth.Enabled {
-		service.Use(middleware.AuthMiddleware(api.Config.Auth))
+		service.Use(middleware.ConditionalAuthMiddleware(api.Config.Auth))
 		log.Info("Authentication middleware enabled")
 	}
 
@@ -65,11 +69,22 @@ func (api *API) NewRouter() *web.Service {
 	// Health check endpoint (public)
 	service.Get("/api/v1/health", api.HealthCheck())
 
-	// Authentication endpoint (public)
+	// Authentication endpoints (public)
 	service.Post("/api/v1/login", api.Login())
+	service.Post("/api/v1/password-reset", api.RequestPasswordReset())
 
 	// Configuration endpoints
 	service.Get("/api/v1/config", api.GetConfig())
+	service.Put("/api/v1/config", api.UpdateConfig())
+
+	// Statistics endpoint
+	service.Get("/api/v1/stats", api.GetStats())
+
+	// Ecosystem health endpoint
+	service.Get("/api/v1/ecosystem/health", api.GetEcosystemHealth())
+
+	// Service reporting endpoint
+	service.Post("/api/v1/services/report", api.ReceiveServiceReport())
 
 	// Account management endpoints
 	service.Get("/api/v1/accounts", api.ListAccounts())

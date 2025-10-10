@@ -3,9 +3,11 @@ package services
 import (
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/n0needt0/bytefreezer-control/config"
 	"github.com/n0needt0/go-goodies/log"
+	_ "github.com/lib/pq" // PostgreSQL driver
 )
 
 // databaseService implements the DatabaseService interface
@@ -92,9 +94,38 @@ func (d *databaseService) DeleteTenant(id string) error {
 
 // connectPostgreSQL establishes PostgreSQL connection
 func (d *databaseService) connectPostgreSQL() error {
-	// TODO: Implement PostgreSQL connection
-	log.Info("PostgreSQL connection - not implemented")
-	return fmt.Errorf("PostgreSQL connection not implemented")
+	// Build connection string
+	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		d.config.Host,
+		d.config.Port,
+		d.config.Username,
+		d.config.Password,
+		d.config.Database,
+		d.config.SSLMode,
+	)
+
+	// Open database connection
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		return fmt.Errorf("failed to open PostgreSQL connection: %w", err)
+	}
+
+	// Set connection pool settings
+	db.SetMaxOpenConns(d.config.MaxConnections)
+	db.SetMaxIdleConns(d.config.MaxIdleConnections)
+	db.SetConnMaxLifetime(5 * time.Minute)
+
+	// Test the connection
+	if err = db.Ping(); err != nil {
+		db.Close()
+		return fmt.Errorf("failed to ping PostgreSQL database: %w", err)
+	}
+
+	d.DB = db
+	log.Infof("PostgreSQL connection established successfully to %s:%d/%s",
+		d.config.Host, d.config.Port, d.config.Database)
+
+	return nil
 }
 
 // connectSQLite establishes SQLite connection

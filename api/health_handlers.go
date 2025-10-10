@@ -62,7 +62,7 @@ func (api *API) RegisterService() usecase.Interactor {
 			ServiceType:   input.ServiceType,
 			InstanceID:    instanceID,
 			InstanceAPI:   input.InstanceAPI,
-			Status:        "Unhealthy", // Initial status
+			Status:        "Starting", // Initial status
 			Configuration: input.Configuration,
 			Timestamp:     time.Now(),
 		}

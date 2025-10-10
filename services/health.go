@@ -65,9 +65,9 @@ func (h *HealthService) RegisterService(registration ServiceRegistration) error 
 		registration.InstanceID = hostname
 	}
 
-	// Set initial status to Unhealthy
+	// Set initial status to Starting
 	if registration.Status == "" {
-		registration.Status = "Unhealthy"
+		registration.Status = "Starting"
 	}
 
 	configJson, err := json.Marshal(registration.Configuration)

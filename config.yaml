@@ -52,5 +52,12 @@ rate_limit:
   requests_per_minute: 100
   burst_size: 20
 
+# Health reporting configuration
+health_reporting:
+  enabled: true  # Enable health reporting (self-registration)
+  report_interval: "30s"  # How often to register itself
+  timeout_seconds: 10  # HTTP timeout for health operations
+  register_on_startup: true  # Register service instance on startup
+
 # Development mode
 dev: true  # Enable dev mode for browser testing

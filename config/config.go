@@ -9,15 +9,16 @@ import (
 )
 
 type Config struct {
-	App          AppConfig          `yaml:"app"`
-	Logging      LoggingConfig      `yaml:"logging"`
-	Server       ServerConfig       `yaml:"server"`
-	Database     DatabaseConfig     `yaml:"database"`
-	Otel         OtelConfig         `yaml:"otel"`
-	Housekeeping HousekeepingConfig `yaml:"housekeeping"`
-	Auth         AuthConfig         `yaml:"auth"`
-	RateLimit    RateLimitConfig    `yaml:"rate_limit"`
-	Dev          bool               `yaml:"dev"`
+	App            AppConfig            `yaml:"app"`
+	Logging        LoggingConfig        `yaml:"logging"`
+	Server         ServerConfig         `yaml:"server"`
+	Database       DatabaseConfig       `yaml:"database"`
+	Otel           OtelConfig           `yaml:"otel"`
+	Housekeeping   HousekeepingConfig   `yaml:"housekeeping"`
+	Auth           AuthConfig           `yaml:"auth"`
+	RateLimit      RateLimitConfig      `yaml:"rate_limit"`
+	HealthReporting HealthReportingConfig `yaml:"health_reporting"`
+	Dev            bool                 `yaml:"dev"`
 
 	// Initialized components (set at runtime)
 	DatabaseService interface{} `yaml:"-"`
@@ -74,6 +75,13 @@ type RateLimitConfig struct {
 	Enabled           bool `yaml:"enabled"`
 	RequestsPerMinute int  `yaml:"requests_per_minute"`
 	BurstSize         int  `yaml:"burst_size"`
+}
+
+type HealthReportingConfig struct {
+	Enabled           bool   `yaml:"enabled"`
+	ReportInterval    string `yaml:"report_interval"`
+	TimeoutSeconds    int    `yaml:"timeout_seconds"`
+	RegisterOnStartup bool   `yaml:"register_on_startup"`
 }
 
 // LoadConfig loads configuration from file and environment variables

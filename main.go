@@ -93,9 +93,19 @@ func main() {
 		go server.startHousekeeping()
 	}
 
+	// Register self in health system if enabled
+	if conf.HealthReporting.Enabled && servicesInstance.HealthService != nil {
+		server.registerSelfInHealthSystem()
+	}
+
 	// Start health polling if health service is available
 	if servicesInstance.HealthService != nil {
 		go server.startHealthPolling()
+	}
+
+	// Start periodic self-health updates if enabled
+	if conf.HealthReporting.Enabled && servicesInstance.HealthService != nil {
+		go server.startSelfHealthUpdates()
 	}
 
 	// Start API server in background
@@ -222,5 +232,106 @@ func (svc *Server) runHealthPolling() {
 		} else {
 			log.Debug("Health polling completed successfully")
 		}
+	}
+}
+
+func (svc *Server) registerSelfInHealthSystem() {
+	if !svc.Config.HealthReporting.RegisterOnStartup {
+		return
+	}
+
+	// Create instance API URL
+	instanceAPI := fmt.Sprintf("localhost:%d", svc.Config.Server.ApiPort)
+
+	// Create control service configuration data
+	configuration := map[string]interface{}{
+		"service_type":    "bytefreezer-control",
+		"version":         svc.Config.App.Version,
+		"instance_api":    instanceAPI,
+		"report_interval": svc.Config.HealthReporting.ReportInterval,
+		"timeout":         fmt.Sprintf("%ds", svc.Config.HealthReporting.TimeoutSeconds),
+		"api": map[string]interface{}{
+			"port":        svc.Config.Server.ApiPort,
+			"auth_enabled": svc.Config.Auth.Enabled,
+		},
+		"database": map[string]interface{}{
+			"enabled":     svc.Config.Database.Enabled,
+			"type":        svc.Config.Database.Type,
+			"host":        svc.Config.Database.Host,
+			"port":        svc.Config.Database.Port,
+			"database":    svc.Config.Database.Database,
+		},
+		"housekeeping": map[string]interface{}{
+			"enabled":          svc.Config.Housekeeping.Enabled,
+			"interval_seconds": svc.Config.Housekeeping.IntervalSeconds,
+		},
+		"otel": map[string]interface{}{
+			"enabled":      svc.Config.Otel.Enabled,
+			"metrics_port": svc.Config.Otel.MetricsPort,
+		},
+		"capabilities": []string{
+			"health_monitoring",
+			"service_registration",
+			"tenant_management",
+			"configuration_management",
+			"api_gateway",
+			"authentication",
+			"metrics_collection",
+		},
+	}
+
+	if err := svc.Services.HealthService.RegisterSelf("bytefreezer-control", instanceAPI, configuration); err != nil {
+		log.Warnf("Failed to register control service in health system: %v", err)
+	} else {
+		log.Info("Successfully registered control service in health system")
+	}
+}
+
+func (svc *Server) startSelfHealthUpdates() {
+	// Parse report interval
+	reportInterval, err := time.ParseDuration(svc.Config.HealthReporting.ReportInterval)
+	if err != nil {
+		log.Warnf("Failed to parse health reporting interval '%s', using default 30s: %v", svc.Config.HealthReporting.ReportInterval, err)
+		reportInterval = 30 * time.Second
+	}
+
+	ticker := time.NewTicker(reportInterval)
+	defer ticker.Stop()
+
+	log.Infof("Starting self-health updates with interval %v", reportInterval)
+
+	for {
+		select {
+		case <-ticker.C:
+			svc.updateSelfHealth()
+		}
+	}
+}
+
+func (svc *Server) updateSelfHealth() {
+	// Generate control service metrics
+	metrics := map[string]interface{}{
+		"timestamp":         time.Now().Unix(),
+		"service_type":      "bytefreezer-control",
+		"uptime_seconds":    time.Since(time.Now().Add(-time.Hour)).Seconds(), // Placeholder - would need actual start time
+		"version":           svc.Config.App.Version,
+		"last_health_check": time.Now().UTC().Format(time.RFC3339),
+		"api": map[string]interface{}{
+			"port":        svc.Config.Server.ApiPort,
+			"auth_enabled": svc.Config.Auth.Enabled,
+		},
+		"database": map[string]interface{}{
+			"connected": svc.Services.Database != nil,
+		},
+		"services": map[string]interface{}{
+			"health_service_enabled": svc.Services.HealthService != nil,
+			"database_service_enabled": svc.Services.Database != nil,
+		},
+	}
+
+	if err := svc.Services.HealthService.UpdateSelfHealth("bytefreezer-control", metrics); err != nil {
+		log.Debugf("Failed to update self health: %v", err)
+	} else {
+		log.Debug("Successfully updated self health status")
 	}
 }

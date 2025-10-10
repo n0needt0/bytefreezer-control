@@ -391,3 +391,27 @@ func (h *HealthService) GetHealthSummary() (map[string]interface{}, error) {
 
 	return summary, nil
 }
+
+// RegisterSelf registers the control service itself in the health system
+func (h *HealthService) RegisterSelf(serviceType, instanceAPI string, config map[string]interface{}) error {
+	registration := ServiceRegistration{
+		ServiceType:   serviceType,
+		InstanceAPI:   instanceAPI,
+		Status:        "Healthy", // Control service starts healthy
+		Configuration: config,
+		Timestamp:     time.Now(),
+	}
+
+	return h.RegisterService(registration)
+}
+
+// UpdateSelfHealth updates the control service's own health status
+func (h *HealthService) UpdateSelfHealth(serviceType string, metrics map[string]interface{}) error {
+	// Get hostname for instance ID
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "unknown"
+	}
+
+	return h.UpdateServiceHealth(serviceType, hostname, "Healthy", metrics, nil)
+}

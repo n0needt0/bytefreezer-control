@@ -240,8 +240,15 @@ func (svc *Server) registerSelfInHealthSystem() {
 		return
 	}
 
-	// Create instance API URL
-	instanceAPI := fmt.Sprintf("localhost:%d", svc.Config.Server.ApiPort)
+	// Get actual hostname
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Warnf("Failed to get hostname, using 'localhost': %v", err)
+		hostname = "localhost"
+	}
+
+	// Create instance API URL (without protocol)
+	instanceAPI := fmt.Sprintf("%s:%d", hostname, svc.Config.Server.ApiPort)
 
 	// Create control service configuration data
 	configuration := map[string]interface{}{

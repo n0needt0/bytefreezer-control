@@ -296,9 +296,9 @@ func (svc *Server) registerSelfInHealthSystem() {
 
 func (svc *Server) startSelfHealthUpdates() {
 	// Parse report interval
-	reportInterval, err := time.ParseDuration(svc.Config.HealthReporting.ReportInterval)
-	if err != nil {
-		log.Warnf("Failed to parse health reporting interval '%s', using default 30s: %v", svc.Config.HealthReporting.ReportInterval, err)
+	reportInterval := time.Duration(svc.Config.HealthReporting.ReportInterval) * time.Second
+	if reportInterval <= 0 {
+		log.Warnf("Invalid health reporting interval %d, using default 30s", svc.Config.HealthReporting.ReportInterval)
 		reportInterval = 30 * time.Second
 	}
 

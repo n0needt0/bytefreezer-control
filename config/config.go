@@ -78,10 +78,10 @@ type RateLimitConfig struct {
 }
 
 type HealthReportingConfig struct {
-	Enabled           bool   `yaml:"enabled"`
-	ReportInterval    string `yaml:"report_interval"`
-	TimeoutSeconds    int    `yaml:"timeout_seconds"`
-	RegisterOnStartup bool   `yaml:"register_on_startup"`
+	Enabled           bool `yaml:"enabled"`
+	ReportInterval    int  `yaml:"report_interval"` // Interval in seconds
+	TimeoutSeconds    int  `yaml:"timeout_seconds"`
+	RegisterOnStartup bool `yaml:"register_on_startup"`
 }
 
 // LoadConfig loads configuration from file and environment variables

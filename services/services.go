@@ -13,11 +13,12 @@ import (
 
 // Services contains all service instances
 type Services struct {
-	Config   *config.Config
-	Storage  storage.Storage // New storage layer
-	Database DatabaseService // Legacy - to be deprecated
-	Stats    *ControlStats
-	mutex    sync.RWMutex
+	Config        *config.Config
+	Storage       storage.Storage // New storage layer
+	Database      DatabaseService // Legacy - to be deprecated
+	HealthService *HealthService  // Health monitoring service
+	Stats         *ControlStats
+	mutex         sync.RWMutex
 }
 
 // ControlStats tracks control service statistics
@@ -119,6 +120,16 @@ func NewServices(config *config.Config) *Services {
 			log.Warnf("Failed to connect to database: %v", err)
 		}
 		services.Database = dbService
+
+		// Initialize health service if storage is available
+		if services.Storage != nil {
+			// Access the underlying database connection from PostgreSQL storage
+			if pgStorage, ok := services.Storage.(*storage.PostgreSQLStorage); ok {
+				// We need to access the DB field from the PostgreSQL storage
+				services.HealthService = NewHealthService(pgStorage.GetDB())
+				log.Info("Health monitoring service initialized")
+			}
+		}
 	}
 
 	return services

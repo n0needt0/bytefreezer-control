@@ -83,8 +83,14 @@ func (api *API) NewRouter() *web.Service {
 	// Ecosystem health endpoint
 	service.Get("/api/v1/ecosystem/health", api.GetEcosystemHealth())
 
-	// Service reporting endpoint
+	// Service reporting endpoint (legacy)
 	service.Post("/api/v1/services/report", api.ReceiveServiceReport())
+
+	// Health monitoring endpoints
+	service.Post("/api/v1/health/register", api.RegisterService())
+	service.Get("/api/v1/health/status", api.GetHealthStatus())
+	service.Get("/api/v1/health/summary", api.GetHealthSummary())
+	service.Get("/api/v1/health/services/{serviceType}", api.GetServiceHealth())
 
 	// Account management endpoints
 	service.Get("/api/v1/accounts", api.ListAccounts())

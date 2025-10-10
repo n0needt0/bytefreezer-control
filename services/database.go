@@ -11,7 +11,7 @@ import (
 // databaseService implements the DatabaseService interface
 type databaseService struct {
 	config *config.DatabaseConfig
-	db     *sql.DB
+	DB     *sql.DB // Export DB field for health service access
 }
 
 // NewDatabaseService creates a new database service
@@ -41,18 +41,18 @@ func (d *databaseService) Connect() error {
 
 // Close closes the database connection
 func (d *databaseService) Close() error {
-	if d.db != nil {
-		return d.db.Close()
+	if d.DB != nil {
+		return d.DB.Close()
 	}
 	return nil
 }
 
 // Ping tests the database connection
 func (d *databaseService) Ping() error {
-	if d.db == nil {
+	if d.DB == nil {
 		return fmt.Errorf("database not connected")
 	}
-	return d.db.Ping()
+	return d.DB.Ping()
 }
 
 // GetTenants retrieves all tenants

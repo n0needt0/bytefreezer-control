@@ -112,13 +112,22 @@ func isPublicEndpoint(path string) bool {
 		"/api/v1/health",
 		"/api/v1/login",
 		"/api/v1/password-reset",
-		"/api/v1/services/report", // Allow services to report health without auth
+		"/api/v1/services/report",     // Allow services to report health without auth (legacy)
+		"/api/v1/health/register",     // Allow services to register for health monitoring
+		"/api/v1/health/status",       // Allow health status checks
+		"/api/v1/health/summary",      // Allow health summary for dashboard
 	}
 
+	// Check exact matches
 	for _, endpoint := range publicEndpoints {
 		if path == endpoint {
 			return true
 		}
+	}
+
+	// Allow service-specific health endpoints: /api/v1/health/services/{serviceType}
+	if strings.HasPrefix(path, "/api/v1/health/services/") {
+		return true
 	}
 
 	return false

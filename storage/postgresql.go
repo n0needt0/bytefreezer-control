@@ -802,6 +802,11 @@ func (p *PostgreSQLStorage) GetMigrator() Migrator {
 	return p.migrator
 }
 
+// GetDB returns the underlying database connection for health service
+func (p *PostgreSQLStorage) GetDB() *sql.DB {
+	return p.db
+}
+
 // Helper functions for default configurations
 func isEmptyAccountConfig(config AccountConfig) bool {
 	return config.Tier == "" && config.MaxTenants == 0

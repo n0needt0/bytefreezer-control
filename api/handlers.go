@@ -368,13 +368,32 @@ func (api *API) ReceiveServiceReport() usecase.Interactor {
 	u := usecase.NewInteractor(func(ctx context.Context, input ServiceReport, output *ServiceReportResponse) error {
 		api.Services.IncrementAPIRequests()
 
-		// Store the service report (in production, this would go to a database)
-		// For now, we'll just log it and store in memory
+		// Legacy logging for backward compatibility
 		log.Infof("Received health report from service %s (%s): healthy=%v",
 			input.ServiceName, input.ServiceID, input.Healthy)
 
-		// TODO: Store in service registry/database
-		// This would update the service registry with the latest health status
+		// Store in database if health service is available
+		if api.Services.HealthService != nil {
+			status := "Unhealthy"
+			if input.Healthy {
+				status = "Healthy"
+			}
+
+			// Try to update health status in database
+			err := api.Services.HealthService.UpdateServiceHealth(
+				input.ServiceName, // service_type
+				input.ServiceID,   // instance_id (should be hostname)
+				status,
+				input.Metrics,
+				nil, // response_time_ms will be set by polling
+			)
+
+			if err != nil {
+				log.Warnf("Failed to update health status in database for %s:%s: %v",
+					input.ServiceName, input.ServiceID, err)
+				// Don't fail the request, just log the error for backward compatibility
+			}
+		}
 
 		output.Success = true
 		output.Message = fmt.Sprintf("Health report received for service %s", input.ServiceName)

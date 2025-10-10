@@ -93,6 +93,11 @@ func main() {
 		go server.startHousekeeping()
 	}
 
+	// Start health polling if health service is available
+	if servicesInstance.HealthService != nil {
+		go server.startHealthPolling()
+	}
+
 	// Start API server in background
 	go server.HttpApi.Serve(":"+strconv.Itoa(conf.Server.ApiPort), server.HttpApi.NewRouter())
 
@@ -180,5 +185,42 @@ func (svc *Server) runHousekeeping() {
 		log.Debug("Database maintenance completed")
 	}
 
+	// Perform health service cleanup
+	if svc.Services.HealthService != nil {
+		if err := svc.Services.HealthService.CleanupStaleRecords(); err != nil {
+			log.Warnf("Failed to cleanup stale health records: %v", err)
+		}
+	}
+
 	log.Debug("Housekeeping tasks completed")
+}
+
+func (svc *Server) startHealthPolling() {
+	// Poll every 10 minutes as per requirements
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+
+	log.Info("Starting health polling with 10-minute interval")
+
+	// Initial poll on startup
+	svc.runHealthPolling()
+
+	for {
+		select {
+		case <-ticker.C:
+			svc.runHealthPolling()
+		}
+	}
+}
+
+func (svc *Server) runHealthPolling() {
+	log.Debug("Running health polling...")
+
+	if svc.Services.HealthService != nil {
+		if err := svc.Services.HealthService.PollServicesHealth(); err != nil {
+			log.Warnf("Health polling failed: %v", err)
+		} else {
+			log.Debug("Health polling completed successfully")
+		}
+	}
 }

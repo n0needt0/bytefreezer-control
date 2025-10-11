@@ -342,24 +342,14 @@ func (svc *Server) updateSelfHealth() {
 	// Build configuration - updated on every health report
 	configuration := svc.buildControlConfiguration()
 
-	// Generate control service metrics
+	// Generate control service runtime metrics (not configuration data)
 	metrics := map[string]interface{}{
 		"timestamp":         time.Now().Unix(),
-		"service_type":      "bytefreezer-control",
 		"uptime_seconds":    time.Since(time.Now().Add(-time.Hour)).Seconds(), // Placeholder - would need actual start time
-		"version":           svc.Config.App.Version,
 		"last_health_check": time.Now().UTC().Format(time.RFC3339),
-		"api": map[string]interface{}{
-			"port":         svc.Config.Server.ApiPort,
-			"auth_enabled": svc.Config.Auth.Enabled,
-		},
-		"database": map[string]interface{}{
-			"connected": svc.Services.Database != nil,
-		},
-		"services": map[string]interface{}{
-			"health_service_enabled":   svc.Services.HealthService != nil,
-			"database_service_enabled": svc.Services.Database != nil,
-		},
+		"database_connected": svc.Services.Database != nil,
+		"health_service_enabled":   svc.Services.HealthService != nil,
+		"database_service_enabled": svc.Services.Database != nil,
 	}
 
 	if err := svc.Services.HealthService.UpdateSelfHealth("bytefreezer-control", instanceAPI, configuration, metrics); err != nil {

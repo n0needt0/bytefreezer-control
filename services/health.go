@@ -419,7 +419,7 @@ func (h *HealthService) RegisterSelf(serviceType, instanceAPI string, config map
 	registration := ServiceRegistration{
 		ServiceType:   serviceType,
 		InstanceAPI:   instanceAPI,
-		Status:        "Healthy", // Control service starts healthy
+		Status:        "Starting", // Control service starts with Starting status like all other services
 		Configuration: config,
 		Timestamp:     time.Now(),
 	}

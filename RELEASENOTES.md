@@ -1,5 +1,23 @@
 # ByteFreezer Control - Release Notes
 
+## Phase 2.1: Health Status & Consistency (2025-10-11)
+
+### Bug Fixes
+
+#### Health Registration Status Consistency
+- **Consistent Startup Status**: Changed control service self-registration to use "Starting" status instead of "Healthy"
+  - All services now consistently register with "Starting" status on startup
+  - Aligns control service behavior with all other ByteFreezer components (proxy, receiver, piper, packer)
+  - Services transition to "Healthy" after first successful health check
+  - Implementation: `services/health.go:422`
+
+### Behavior Changes
+- **Before**: Control service registered itself as "Healthy" immediately on startup
+- **After**: Control service registers as "Starting" and transitions to "Healthy" after health checks confirm service readiness
+- **Benefit**: More accurate health status representation during service initialization phase
+
+---
+
 ## Phase 2: Client Library for Service Integration (2025-10-04)
 
 ### Major Features

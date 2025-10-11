@@ -75,6 +75,9 @@ func (h *HealthService) RegisterService(registration ServiceRegistration) error 
 		return fmt.Errorf("failed to marshal configuration: %w", err)
 	}
 
+	log.Infof("Registering service %s instance %s - config JSON: %s",
+		registration.ServiceType, registration.InstanceID, string(configJson))
+
 	_, err = h.db.Exec(`
 		SELECT upsert_health_current($1, $2, $3, $4, $5, NULL, NULL)`,
 		registration.ServiceType,
@@ -85,10 +88,12 @@ func (h *HealthService) RegisterService(registration ServiceRegistration) error 
 	)
 
 	if err != nil {
+		log.Errorf("Failed to execute upsert_health_current for %s:%s: %v",
+			registration.ServiceType, registration.InstanceID, err)
 		return fmt.Errorf("failed to register service: %w", err)
 	}
 
-	log.Infof("Registered service %s instance %s at %s",
+	log.Infof("Successfully registered service %s instance %s at %s",
 		registration.ServiceType, registration.InstanceID, registration.InstanceAPI)
 
 	return nil
@@ -99,23 +104,40 @@ func (h *HealthService) UpdateServiceHealth(serviceType, instanceID, status stri
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
-	var metricsJson []byte
-	var err error
+	var metricsValue interface{}
 	if metrics != nil {
-		metricsJson, err = json.Marshal(metrics)
+		metricsJson, err := json.Marshal(metrics)
 		if err != nil {
+			log.Errorf("Failed to marshal metrics for %s:%s: %v", serviceType, instanceID, err)
 			return fmt.Errorf("failed to marshal metrics: %w", err)
 		}
+		metricsValue = metricsJson
+		log.Infof("Updating health for %s:%s - metrics JSON: %s", serviceType, instanceID, string(metricsJson))
+	} else {
+		// Use NULL for nil metrics instead of nil byte slice
+		metricsValue = nil
+		log.Infof("Updating health for %s:%s - no metrics (nil)", serviceType, instanceID)
 	}
 
-	_, err = h.db.Exec(`
+	result, err := h.db.Exec(`
 		UPDATE health_current
 		SET status = $1, metrics = $2, response_time_ms = $3, last_seen = NOW(), updated_at = NOW()
 		WHERE service_type = $4 AND instance_id = $5`,
-		status, metricsJson, responseTimeMs, serviceType, instanceID)
+		status, metricsValue, responseTimeMs, serviceType, instanceID)
 
 	if err != nil {
+		log.Errorf("Database UPDATE failed for %s:%s: %v", serviceType, instanceID, err)
 		return fmt.Errorf("failed to update service health: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Warnf("Could not get rows affected for %s:%s: %v", serviceType, instanceID, err)
+	} else {
+		log.Debugf("Updated %d rows for %s:%s (status: %s)", rowsAffected, serviceType, instanceID, status)
+		if rowsAffected == 0 {
+			log.Warnf("No rows updated for %s:%s - record may not exist in health_current table", serviceType, instanceID)
+		}
 	}
 
 	return nil

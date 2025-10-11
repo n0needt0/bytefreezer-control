@@ -44,7 +44,11 @@ func (api *API) RegisterService() usecase.Interactor {
 	u := usecase.NewInteractor(func(ctx context.Context, input ServiceRegistrationRequest, output *ServiceRegistrationResponse) error {
 		api.Services.IncrementAPIRequests()
 
+		log.Infof("Received registration request for service type: %s, instance_id: %s, instance_api: %s",
+			input.ServiceType, input.InstanceID, input.InstanceAPI)
+
 		if api.Services.HealthService == nil {
+			log.Error("Health service is not available for registration")
 			return usecaseStatus.Wrap(fmt.Errorf("health service not available"), usecaseStatus.InvalidArgument)
 		}
 
@@ -53,6 +57,7 @@ func (api *API) RegisterService() usecase.Interactor {
 		if instanceID == "" {
 			hostname, err := os.Hostname()
 			if err != nil {
+				log.Errorf("Failed to get hostname for registration: %v", err)
 				return usecaseStatus.Wrap(fmt.Errorf("failed to get hostname: %w", err), usecaseStatus.InvalidArgument)
 			}
 			instanceID = hostname

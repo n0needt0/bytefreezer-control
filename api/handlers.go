@@ -349,10 +349,14 @@ func (api *API) GetEcosystemHealth() usecase.Interactor {
 // ServiceReport represents a service health report
 type ServiceReport struct {
 	ServiceName   string                 `json:"service_name"`
+	ServiceType   string                 `json:"service_type"` // Alternative field name
 	ServiceID     string                 `json:"service_id"`
+	InstanceID    string                 `json:"instance_id"` // Alternative field name
+	InstanceAPI   string                 `json:"instance_api"`
 	Version       string                 `json:"version"`
 	Timestamp     time.Time              `json:"timestamp"`
 	Healthy       bool                   `json:"healthy"`
+	Status        string                 `json:"status"` // Alternative: "Healthy" or "Unhealthy"
 	Configuration map[string]interface{} `json:"configuration"`
 	Metrics       map[string]interface{} `json:"metrics"`
 }
@@ -368,21 +372,38 @@ func (api *API) ReceiveServiceReport() usecase.Interactor {
 	u := usecase.NewInteractor(func(ctx context.Context, input ServiceReport, output *ServiceReportResponse) error {
 		api.Services.IncrementAPIRequests()
 
+		// Handle both naming conventions
+		serviceName := input.ServiceName
+		if serviceName == "" && input.ServiceType != "" {
+			serviceName = input.ServiceType
+		}
+
+		serviceID := input.ServiceID
+		if serviceID == "" && input.InstanceID != "" {
+			serviceID = input.InstanceID
+		}
+
+		// Handle both healthy (bool) and status (string) fields
+		healthy := input.Healthy
+		if !healthy && input.Status != "" {
+			healthy = (input.Status == "Healthy")
+		}
+
 		// Legacy logging for backward compatibility
 		log.Infof("Received health report from service %s (%s): healthy=%v",
-			input.ServiceName, input.ServiceID, input.Healthy)
+			serviceName, serviceID, healthy)
 
 		// Store in database if health service is available
 		if api.Services.HealthService != nil {
 			status := "Unhealthy"
-			if input.Healthy {
+			if healthy {
 				status = "Healthy"
 			}
 
 			// Try to update health status in database
 			err := api.Services.HealthService.UpdateServiceHealth(
-				input.ServiceName, // service_type
-				input.ServiceID,   // instance_id (should be hostname)
+				serviceName, // service_type
+				serviceID,   // instance_id (should be hostname)
 				status,
 				input.Metrics,
 				nil, // response_time_ms will be set by polling
@@ -390,13 +411,13 @@ func (api *API) ReceiveServiceReport() usecase.Interactor {
 
 			if err != nil {
 				log.Warnf("Failed to update health status in database for %s:%s: %v",
-					input.ServiceName, input.ServiceID, err)
+					serviceName, serviceID, err)
 				// Don't fail the request, just log the error for backward compatibility
 			}
 		}
 
 		output.Success = true
-		output.Message = fmt.Sprintf("Health report received for service %s", input.ServiceName)
+		output.Message = fmt.Sprintf("Health report received for service %s", serviceName)
 
 		return nil
 	})

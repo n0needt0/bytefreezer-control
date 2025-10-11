@@ -100,6 +100,7 @@ func (h *HealthService) RegisterService(registration ServiceRegistration) error 
 }
 
 // UpdateServiceHealth updates health status for a service instance
+// Uses upsert to handle cases where record doesn't exist (e.g., control was unavailable during registration)
 func (h *HealthService) UpdateServiceHealth(serviceType, instanceID, status string, metrics map[string]interface{}, responseTimeMs *int) error {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
@@ -112,33 +113,36 @@ func (h *HealthService) UpdateServiceHealth(serviceType, instanceID, status stri
 			return fmt.Errorf("failed to marshal metrics: %w", err)
 		}
 		metricsValue = metricsJson
-		log.Infof("Updating health for %s:%s - metrics JSON: %s", serviceType, instanceID, string(metricsJson))
+		log.Debugf("Updating health for %s:%s - metrics JSON: %s", serviceType, instanceID, string(metricsJson))
 	} else {
-		// Use NULL for nil metrics instead of nil byte slice
+		// Use NULL for nil metrics
 		metricsValue = nil
-		log.Infof("Updating health for %s:%s - no metrics (nil)", serviceType, instanceID)
+		log.Debugf("Updating health for %s:%s - no metrics (nil)", serviceType, instanceID)
 	}
 
-	result, err := h.db.Exec(`
-		UPDATE health_current
-		SET status = $1, metrics = $2, response_time_ms = $3, last_seen = NOW(), updated_at = NOW()
-		WHERE service_type = $4 AND instance_id = $5`,
-		status, metricsValue, responseTimeMs, serviceType, instanceID)
+	// Use upsert to handle case where record doesn't exist
+	// This can happen if:
+	// - Control service was unavailable during initial registration
+	// - Data was deleted from database
+	// - Service sent health report before registration completed
+	// Pass empty string for instance_api and NULL for configuration as placeholders
+	// These will be updated when service properly registers
+	_, err := h.db.Exec(`
+		SELECT upsert_health_current($1, $2, $3, $4, NULL, $5, $6)`,
+		serviceType,
+		instanceID,
+		"",     // instance_api placeholder - will be updated on proper registration
+		status,
+		metricsValue,
+		responseTimeMs,
+	)
 
 	if err != nil {
-		log.Errorf("Database UPDATE failed for %s:%s: %v", serviceType, instanceID, err)
+		log.Errorf("Failed to upsert health for %s:%s: %v", serviceType, instanceID, err)
 		return fmt.Errorf("failed to update service health: %w", err)
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		log.Warnf("Could not get rows affected for %s:%s: %v", serviceType, instanceID, err)
-	} else {
-		log.Debugf("Updated %d rows for %s:%s (status: %s)", rowsAffected, serviceType, instanceID, status)
-		if rowsAffected == 0 {
-			log.Warnf("No rows updated for %s:%s - record may not exist in health_current table", serviceType, instanceID)
-		}
-	}
+	log.Debugf("Successfully updated/inserted health for %s:%s (status: %s)", serviceType, instanceID, status)
 
 	return nil
 }
@@ -278,6 +282,13 @@ func (h *HealthService) PollServicesHealth() error {
 
 // pollSingleService polls a single service's health endpoint
 func (h *HealthService) pollSingleService(record HealthRecord) {
+	// Skip polling services that are in "Starting" status
+	if record.Status == "Starting" {
+		log.Debugf("Skipping health poll for %s:%s - service is still starting",
+			record.ServiceType, record.InstanceID)
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

@@ -395,24 +395,44 @@ func (api *API) ReceiveServiceReport() usecase.Interactor {
 
 		// Store in database if health service is available
 		if api.Services.HealthService != nil {
-			status := "Unhealthy"
-			if healthy {
-				status = "Healthy"
+			// Get current record to check if service is still starting
+			records, err := api.Services.HealthService.GetHealthRecordsByService(serviceName)
+			currentStatus := ""
+			if err == nil {
+				for _, record := range records {
+					if record.InstanceID == serviceID {
+						currentStatus = record.Status
+						break
+					}
+				}
 			}
 
-			// Try to update health status in database
-			err := api.Services.HealthService.UpdateServiceHealth(
-				serviceName, // service_type
-				serviceID,   // instance_id (should be hostname)
-				status,
-				input.Metrics,
-				nil, // response_time_ms will be set by polling
-			)
+			// Don't overwrite "Starting" status with health reports
+			// Let the service stay in "Starting" until polling changes it
+			if currentStatus == "Starting" {
+				log.Debugf("Service %s:%s is still starting - not updating status from health report",
+					serviceName, serviceID)
+			} else {
+				// Normal status update
+				status := "Unhealthy"
+				if healthy {
+					status = "Healthy"
+				}
 
-			if err != nil {
-				log.Warnf("Failed to update health status in database for %s:%s: %v",
-					serviceName, serviceID, err)
-				// Don't fail the request, just log the error for backward compatibility
+				// Try to update health status in database
+				err := api.Services.HealthService.UpdateServiceHealth(
+					serviceName, // service_type
+					serviceID,   // instance_id (should be hostname)
+					status,
+					input.Metrics,
+					nil, // response_time_ms will be set by polling
+				)
+
+				if err != nil {
+					log.Warnf("Failed to update health status in database for %s:%s: %v",
+						serviceName, serviceID, err)
+					// Don't fail the request, just log the error for backward compatibility
+				}
 			}
 		}
 

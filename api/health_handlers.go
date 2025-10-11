@@ -17,6 +17,7 @@ type ServiceRegistrationRequest struct {
 	ServiceType   string                 `json:"service_type" required:"true"`
 	InstanceID    string                 `json:"instance_id,omitempty"`
 	InstanceAPI   string                 `json:"instance_api" required:"true"`
+	Status        string                 `json:"status,omitempty"`
 	Configuration map[string]interface{} `json:"configuration,omitempty"`
 }
 
@@ -63,11 +64,17 @@ func (api *API) RegisterService() usecase.Interactor {
 			instanceID = hostname
 		}
 
+		// Use provided status or default to "Starting"
+		status := input.Status
+		if status == "" {
+			status = "Starting"
+		}
+
 		registration := services.ServiceRegistration{
 			ServiceType:   input.ServiceType,
 			InstanceID:    instanceID,
 			InstanceAPI:   input.InstanceAPI,
-			Status:        "Starting", // Initial status
+			Status:        status,
 			Configuration: input.Configuration,
 			Timestamp:     time.Now(),
 		}

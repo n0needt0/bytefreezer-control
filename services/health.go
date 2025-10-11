@@ -101,7 +101,8 @@ func (h *HealthService) RegisterService(registration ServiceRegistration) error 
 
 // UpdateServiceHealth updates health status for a service instance
 // Uses upsert to handle cases where record doesn't exist (e.g., control was unavailable during registration)
-func (h *HealthService) UpdateServiceHealth(serviceType, instanceID, status string, metrics map[string]interface{}, responseTimeMs *int) error {
+// Configuration should be provided on every update to keep it current
+func (h *HealthService) UpdateServiceHealth(serviceType, instanceID, instanceAPI, status string, config map[string]interface{}, metrics map[string]interface{}, responseTimeMs *int) error {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
@@ -120,19 +121,33 @@ func (h *HealthService) UpdateServiceHealth(serviceType, instanceID, status stri
 		log.Debugf("Updating health for %s:%s - no metrics (nil)", serviceType, instanceID)
 	}
 
+	var configValue interface{}
+	if config != nil {
+		configJson, err := json.Marshal(config)
+		if err != nil {
+			log.Errorf("Failed to marshal configuration for %s:%s: %v", serviceType, instanceID, err)
+			return fmt.Errorf("failed to marshal configuration: %w", err)
+		}
+		configValue = configJson
+		log.Debugf("Updating health for %s:%s - config JSON: %s", serviceType, instanceID, string(configJson))
+	} else {
+		// Use NULL for nil configuration
+		configValue = nil
+		log.Debugf("Updating health for %s:%s - no configuration (nil)", serviceType, instanceID)
+	}
+
 	// Use upsert to handle case where record doesn't exist
 	// This can happen if:
 	// - Control service was unavailable during initial registration
 	// - Data was deleted from database
 	// - Service sent health report before registration completed
-	// Pass empty string for instance_api and NULL for configuration as placeholders
-	// These will be updated when service properly registers
 	_, err := h.db.Exec(`
-		SELECT upsert_health_current($1, $2, $3, $4, NULL, $5, $6)`,
+		SELECT upsert_health_current($1, $2, $3, $4, $5, $6, $7)`,
 		serviceType,
 		instanceID,
-		"",     // instance_api placeholder - will be updated on proper registration
+		instanceAPI,
 		status,
+		configValue,
 		metricsValue,
 		responseTimeMs,
 	)
@@ -299,7 +314,7 @@ func (h *HealthService) pollSingleService(record HealthRecord) {
 	if err != nil {
 		log.Warnf("Failed to create health check request for %s:%s: %v",
 			record.ServiceType, record.InstanceID, err)
-		h.UpdateServiceHealth(record.ServiceType, record.InstanceID, "Unhealthy", nil, nil)
+		h.UpdateServiceHealth(record.ServiceType, record.InstanceID, record.InstanceAPI, "Unhealthy", nil, nil, nil)
 		return
 	}
 
@@ -309,7 +324,7 @@ func (h *HealthService) pollSingleService(record HealthRecord) {
 	if err != nil {
 		log.Debugf("Health check failed for %s:%s: %v",
 			record.ServiceType, record.InstanceID, err)
-		h.UpdateServiceHealth(record.ServiceType, record.InstanceID, "Unhealthy", nil, &responseTime)
+		h.UpdateServiceHealth(record.ServiceType, record.InstanceID, record.InstanceAPI, "Unhealthy", nil, nil, &responseTime)
 		return
 	}
 	defer resp.Body.Close()
@@ -329,7 +344,7 @@ func (h *HealthService) pollSingleService(record HealthRecord) {
 		}
 	}
 
-	err = h.UpdateServiceHealth(record.ServiceType, record.InstanceID, status, metrics, &responseTime)
+	err = h.UpdateServiceHealth(record.ServiceType, record.InstanceID, record.InstanceAPI, status, nil, metrics, &responseTime)
 	if err != nil {
 		log.Warnf("Failed to update health status for %s:%s: %v",
 			record.ServiceType, record.InstanceID, err)
@@ -439,12 +454,13 @@ func (h *HealthService) RegisterSelf(serviceType, instanceAPI string, config map
 }
 
 // UpdateSelfHealth updates the control service's own health status
-func (h *HealthService) UpdateSelfHealth(serviceType string, metrics map[string]interface{}) error {
+// Configuration should be provided to keep it current in the database
+func (h *HealthService) UpdateSelfHealth(serviceType, instanceAPI string, config map[string]interface{}, metrics map[string]interface{}) error {
 	// Get hostname for instance ID
 	hostname, err := os.Hostname()
 	if err != nil {
 		hostname = "unknown"
 	}
 
-	return h.UpdateServiceHealth(serviceType, hostname, "Healthy", metrics, nil)
+	return h.UpdateServiceHealth(serviceType, hostname, instanceAPI, "Healthy", config, metrics, nil)
 }

@@ -407,32 +407,37 @@ func (api *API) ReceiveServiceReport() usecase.Interactor {
 				}
 			}
 
-			// Don't overwrite "Starting" status with health reports
-			// Let the service stay in "Starting" until polling changes it
-			if currentStatus == "Starting" {
-				log.Debugf("Service %s:%s is still starting - not updating status from health report",
+			// Determine status from health report
+			status := "Unhealthy"
+			if healthy {
+				status = "Healthy"
+			}
+
+			// If service is currently "Starting" and reports healthy, transition to "Healthy"
+			// If service is currently "Starting" and reports unhealthy, keep it "Starting"
+			// (the service might still be initializing)
+			if currentStatus == "Starting" && !healthy {
+				log.Debugf("Service %s:%s is still starting and not yet healthy - keeping status as Starting",
 					serviceName, serviceID)
-			} else {
-				// Normal status update
-				status := "Unhealthy"
-				if healthy {
-					status = "Healthy"
-				}
+				status = "Starting"
+			}
 
-				// Try to update health status in database
-				err := api.Services.HealthService.UpdateServiceHealth(
-					serviceName, // service_type
-					serviceID,   // instance_id (should be hostname)
-					status,
-					input.Metrics,
-					nil, // response_time_ms will be set by polling
-				)
+			// Try to update health status in database with configuration
+			// Configuration is updated on every health report to keep it current
+			err = api.Services.HealthService.UpdateServiceHealth(
+				serviceName,          // service_type
+				serviceID,            // instance_id (should be hostname)
+				input.InstanceAPI,    // instance_api
+				status,               // status
+				input.Configuration,  // configuration (updated on every report)
+				input.Metrics,        // metrics
+				nil,                  // response_time_ms will be set by polling
+			)
 
-				if err != nil {
-					log.Warnf("Failed to update health status in database for %s:%s: %v",
-						serviceName, serviceID, err)
-					// Don't fail the request, just log the error for backward compatibility
-				}
+			if err != nil {
+				log.Warnf("Failed to update health status in database for %s:%s: %v",
+					serviceName, serviceID, err)
+				// Don't fail the request, just log the error for backward compatibility
 			}
 		}
 

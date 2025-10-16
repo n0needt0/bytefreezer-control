@@ -259,11 +259,11 @@ func (p *PostgreSQLStorage) CreateTenant(ctx context.Context, tenant *Tenant) er
 	}
 
 	query := `
-		INSERT INTO control_tenants (id, account_id, name, description, active, created_at, updated_at, config)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+		INSERT INTO control_tenants (id, account_id, name, display_name, description, active, created_at, updated_at, config)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
 
 	_, err = p.db.ExecContext(ctx, query,
-		tenant.ID, tenant.AccountID, tenant.Name, tenant.Description, tenant.Active,
+		tenant.ID, tenant.AccountID, tenant.Name, tenant.DisplayName, tenant.Description, tenant.Active,
 		tenant.CreatedAt, tenant.UpdatedAt, configJSON)
 
 	if err != nil {

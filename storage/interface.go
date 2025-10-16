@@ -44,6 +44,7 @@ type Tenant struct {
 	ID          string       `json:"id" db:"id"`
 	AccountID   string       `json:"account_id" db:"account_id"`
 	Name        string       `json:"name" db:"name"`
+	DisplayName string       `json:"display_name" db:"display_name"`
 	Description string       `json:"description" db:"description"`
 	Active      bool         `json:"active" db:"active"`
 	CreatedAt   time.Time    `json:"created_at" db:"created_at"`

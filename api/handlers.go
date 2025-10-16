@@ -756,6 +756,7 @@ func (api *API) CreateTenant() usecase.Interactor {
 			ID:          tenantID,
 			AccountID:   input.AccountID,
 			Name:        input.Name,
+			DisplayName: input.Name,
 			Description: input.Description,
 			Active:      true,
 		}

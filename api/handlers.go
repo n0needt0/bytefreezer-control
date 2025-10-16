@@ -736,9 +736,10 @@ func (api *API) GetTenant() usecase.Interactor {
 // CreateTenant creates a new tenant
 func (api *API) CreateTenant() usecase.Interactor {
 	type createTenantInput struct {
-		AccountID   string `path:"accountId" required:"true"`
-		Name        string `json:"name" required:"true"`
-		Description string `json:"description"`
+		AccountID   string              `path:"accountId" required:"true"`
+		Name        string              `json:"name" required:"true"`
+		Description string              `json:"description"`
+		Config      storage.TenantConfig `json:"config"`
 	}
 
 	u := usecase.NewInteractor(func(ctx context.Context, input createTenantInput, output *storage.Tenant) error {
@@ -759,6 +760,7 @@ func (api *API) CreateTenant() usecase.Interactor {
 			DisplayName: input.Name,
 			Description: input.Description,
 			Active:      true,
+			Config:      input.Config,
 		}
 
 		if err := api.Services.Storage.CreateTenant(ctx, tenant); err != nil {
@@ -780,11 +782,12 @@ func (api *API) CreateTenant() usecase.Interactor {
 // UpdateTenant updates an existing tenant
 func (api *API) UpdateTenant() usecase.Interactor {
 	type updateTenantInput struct {
-		AccountID   string `path:"accountId" required:"true"`
-		TenantID    string `path:"tenantId" required:"true"`
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		Active      *bool  `json:"active"`
+		AccountID   string                `path:"accountId" required:"true"`
+		TenantID    string                `path:"tenantId" required:"true"`
+		Name        string                `json:"name"`
+		Description string                `json:"description"`
+		Active      *bool                 `json:"active"`
+		Config      *storage.TenantConfig `json:"config"`
 	}
 
 	u := usecase.NewInteractor(func(ctx context.Context, input updateTenantInput, output *storage.Tenant) error {
@@ -810,6 +813,9 @@ func (api *API) UpdateTenant() usecase.Interactor {
 		}
 		if input.Active != nil {
 			tenant.Active = *input.Active
+		}
+		if input.Config != nil {
+			tenant.Config = *input.Config
 		}
 
 		if err := api.Services.Storage.UpdateTenant(ctx, tenant); err != nil {

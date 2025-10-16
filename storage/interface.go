@@ -17,11 +17,20 @@ type Account struct {
 	Config    AccountConfig `json:"config" db:"config"`
 }
 
-// AccountConfig represents account-level configuration (can be extended)
+// AccountConfig represents account-level configuration (shared by all tenants)
 type AccountConfig struct {
-	Tier         string                 `json:"tier,omitempty"`          // free, pro, enterprise
-	MaxTenants   int                    `json:"max_tenants,omitempty"`   // Limit on number of tenants
-	MaxDatasets  int                    `json:"max_datasets,omitempty"`  // Total limit across all tenants
+	// Account limits
+	Tier         string `json:"tier,omitempty"`          // free, pro, enterprise
+	MaxTenants   int    `json:"max_tenants,omitempty"`   // Limit on number of tenants
+	MaxDatasets  int    `json:"max_datasets,omitempty"`  // Total limit across all tenants
+
+	// These are defined in config_types.go and imported here
+	Organization   OrganizationConfig `json:"organization"`
+	Subscription   SubscriptionConfig `json:"subscription"`
+	Notifications  NotificationConfig `json:"notifications"`
+	Security       SecurityConfig     `json:"security"`
+	Billing        BillingConfig      `json:"billing"`
+
 	CustomFields map[string]interface{} `json:"custom_fields,omitempty"` // Flexible custom configuration
 }
 

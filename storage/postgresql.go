@@ -61,7 +61,7 @@ func (p *PostgreSQLStorage) CreateAccount(ctx context.Context, account *Account)
 
 	// Set default config if empty
 	if isEmptyAccountConfig(account.Config) {
-		account.Config = getDefaultAccountConfig()
+		account.Config = GetDefaultAccountConfig()
 	}
 
 	now := time.Now()
@@ -807,26 +807,17 @@ func (p *PostgreSQLStorage) GetDB() *sql.DB {
 	return p.db
 }
 
-// Helper functions for default configurations
-func isEmptyAccountConfig(config AccountConfig) bool {
-	return config.Tier == "" && config.MaxTenants == 0
-}
-
-func getDefaultAccountConfig() AccountConfig {
-	return AccountConfig{
-		Tier:       "free",
-		MaxTenants: 5,
-		MaxDatasets: 20,
-		CustomFields: make(map[string]interface{}),
-	}
-}
-
-func isEmptyTenantConfig(config TenantConfig) bool {
-	return config.Organization.Name == ""
-}
-
+// Helper function for checking empty dataset config
 func isEmptyDatasetConfig(config DatasetConfig) bool {
 	return config.Source.Type == ""
+}
+
+// isEmptyTenantConfig checks if tenant config is essentially empty (only has default empty maps)
+func isEmptyTenantConfig(config TenantConfig) bool {
+	return config.MaxDatasets == nil &&
+		config.StorageQuotaGB == nil &&
+		len(config.Metadata) == 0 &&
+		len(config.CustomSettings) == 0
 }
 
 // API Key operations (stub implementations - to be fully implemented)

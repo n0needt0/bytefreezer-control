@@ -2,13 +2,16 @@ package storage
 
 import "time"
 
-// TenantConfig represents the rich configuration document for a tenant
+// TenantConfig represents tenant-specific configuration (lightweight - most config comes from account)
 type TenantConfig struct {
-	Organization   OrganizationConfig `json:"organization"`
-	Subscription   SubscriptionConfig `json:"subscription"`
-	Notifications  NotificationConfig `json:"notifications"`
-	Security       SecurityConfig     `json:"security"`
-	Billing        BillingConfig      `json:"billing"`
+	// Tenant-specific metadata
+	Metadata       map[string]interface{} `json:"metadata,omitempty"`
+
+	// Optional overrides for account-level settings
+	MaxDatasets    *int                   `json:"max_datasets,omitempty"`    // Override account limit
+	StorageQuotaGB *int                   `json:"storage_quota_gb,omitempty"` // Override account limit
+
+	// Custom tenant-specific settings
 	CustomSettings map[string]interface{} `json:"custom_settings,omitempty"`
 }
 
@@ -311,9 +314,12 @@ type TransformRule struct {
 
 // Helper functions for default configurations
 
-// getDefaultTenantConfig returns a sensible default configuration for new tenants
-func getDefaultTenantConfig() TenantConfig {
-	return TenantConfig{
+// GetDefaultAccountConfig returns sensible default configuration for new accounts
+func GetDefaultAccountConfig() AccountConfig {
+	return AccountConfig{
+		Tier:        "basic",
+		MaxTenants:  10,
+		MaxDatasets: 100,
 		Organization: OrganizationConfig{
 			Name:     "New Organization",
 			Size:     "small",
@@ -321,8 +327,8 @@ func getDefaultTenantConfig() TenantConfig {
 		},
 		Subscription: SubscriptionConfig{
 			Tier:              "basic",
-			MaxDatasets:       10,
-			StorageQuotaGB:    5,
+			MaxDatasets:       10,   // Per-tenant default limit
+			StorageQuotaGB:    5,    // Per-tenant default limit
 			ProcessingQuotaMB: 100,
 			APIRateLimit:      1000,
 			Features:          []string{"basic_processing", "api_access"},
@@ -373,6 +379,16 @@ func getDefaultTenantConfig() TenantConfig {
 				Email: "billing@example.com",
 			},
 		},
+		CustomFields: make(map[string]interface{}),
+	}
+}
+
+// getDefaultTenantConfig returns lightweight default configuration for new tenants
+func getDefaultTenantConfig() TenantConfig {
+	return TenantConfig{
+		Metadata:       make(map[string]interface{}),
+		MaxDatasets:    nil, // Use account default
+		StorageQuotaGB: nil, // Use account default
 		CustomSettings: make(map[string]interface{}),
 	}
 }
@@ -449,4 +465,36 @@ func getDefaultDatasetConfig() DatasetConfig {
 		},
 		CustomPipeline: make(map[string]interface{}),
 	}
+}
+
+// isEmptyAccountConfig checks if an account config is empty/uninitialized
+func isEmptyAccountConfig(config AccountConfig) bool {
+	return config.Tier == "" &&
+		config.MaxTenants == 0 &&
+		config.MaxDatasets == 0 &&
+		config.Organization.Name == ""
+}
+
+// MergeTenantWithAccountConfig merges tenant config with account config
+// Tenant overrides take precedence over account defaults
+func MergeTenantWithAccountConfig(account *Account, tenant *Tenant) *Tenant {
+	// Create a merged tenant with all account-level config visible
+	merged := *tenant
+
+	// Apply tenant-specific overrides if they exist
+	if tenant.Config.MaxDatasets != nil {
+		// Tenant has a specific override - keep it
+	} else {
+		// Use account default
+		merged.Config.MaxDatasets = &account.Config.Subscription.MaxDatasets
+	}
+
+	if tenant.Config.StorageQuotaGB != nil {
+		// Tenant has a specific override - keep it
+	} else {
+		// Use account default
+		merged.Config.StorageQuotaGB = &account.Config.Subscription.StorageQuotaGB
+	}
+
+	return &merged
 }

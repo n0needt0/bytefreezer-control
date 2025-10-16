@@ -71,6 +71,7 @@ func (api *API) NewRouter() *web.Service {
 
 	// Authentication endpoints (public)
 	service.Post("/api/v1/login", api.Login())
+	service.Post("/api/v1/refresh", api.RefreshToken())
 	service.Post("/api/v1/password-reset", api.RequestPasswordReset())
 
 	// Configuration endpoints

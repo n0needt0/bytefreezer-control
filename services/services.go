@@ -17,6 +17,8 @@ type Services struct {
 	Storage       storage.Storage // New storage layer
 	Database      DatabaseService // Legacy - to be deprecated
 	HealthService *HealthService  // Health monitoring service
+	Auth          *AuthService    // Authentication service
+	AuditLog      *AuditLogService // Audit logging service
 	Stats         *ControlStats
 	mutex         sync.RWMutex
 }
@@ -126,8 +128,21 @@ func NewServices(config *config.Config) *Services {
 			// Access the underlying database connection from PostgreSQL storage
 			if pgStorage, ok := services.Storage.(*storage.PostgreSQLStorage); ok {
 				// We need to access the DB field from the PostgreSQL storage
-				services.HealthService = NewHealthService(pgStorage.GetDB())
+				db := pgStorage.GetDB()
+				services.HealthService = NewHealthService(db)
 				log.Info("Health monitoring service initialized")
+
+				// Initialize authentication service
+				if config.Auth.JWTSecret != "" {
+					services.Auth = NewAuthService(db, config.Auth.JWTSecret)
+					log.Info("Authentication service initialized")
+				} else {
+					log.Warn("JWT secret not configured, authentication service disabled")
+				}
+
+				// Initialize audit log service
+				services.AuditLog = NewAuditLogService(db)
+				log.Info("Audit log service initialized")
 			}
 		}
 	}

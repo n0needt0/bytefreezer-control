@@ -130,6 +130,8 @@ type DatasetConfig struct {
 	Schedule    ScheduleConfig    `json:"schedule"`
 	Monitoring  MonitoringConfig  `json:"monitoring"`
 	Transform   TransformConfig   `json:"transform"`
+	Parquet        map[string]interface{} `json:"parquet,omitempty"` // Parquet-specific configuration (metadata_level, partition_layout, etc.)
+	Custom         map[string]interface{} `json:"custom,omitempty"` // Root-level custom config
 	CustomPipeline map[string]interface{} `json:"custom_pipeline,omitempty"`
 }
 
@@ -145,6 +147,11 @@ type SourceConfig struct {
 
 type ConnectionConfig struct {
 	URL         string            `json:"url,omitempty"`
+	Bucket      string            `json:"bucket,omitempty"`
+	Region      string            `json:"region,omitempty"`
+	Endpoint    string            `json:"endpoint,omitempty"`
+	SSL         bool              `json:"ssl,omitempty"`
+	Prefix      string            `json:"prefix,omitempty"`
 	Credentials CredentialConfig  `json:"credentials,omitempty"`
 	Headers     map[string]string `json:"headers,omitempty"`
 	Timeout     int               `json:"timeout_seconds"`
@@ -152,11 +159,13 @@ type ConnectionConfig struct {
 }
 
 type CredentialConfig struct {
-	Type     string `json:"type"` // bearer, basic, api_key, oauth
-	Token    string `json:"token,omitempty"`
-	Username string `json:"username,omitempty"`
-	Password string `json:"password,omitempty"`
-	APIKey   string `json:"api_key,omitempty"`
+	Type      string `json:"type"` // bearer, basic, api_key, oauth, s3
+	Token     string `json:"token,omitempty"`
+	Username  string `json:"username,omitempty"`
+	Password  string `json:"password,omitempty"`
+	APIKey    string `json:"api_key,omitempty"`
+	AccessKey string `json:"access_key,omitempty"` // S3 access key
+	SecretKey string `json:"secret_key,omitempty"` // S3 secret key
 }
 
 type SchemaConfig struct {

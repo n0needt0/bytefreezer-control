@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/n0needt0/bytefreezer-control/middleware"
+	"github.com/n0needt0/bytefreezer-control/services"
 	"github.com/n0needt0/bytefreezer-control/storage"
 	"github.com/n0needt0/go-goodies/log"
 	"github.com/swaggest/usecase"
@@ -737,7 +737,6 @@ func (api *API) GetTenant() usecase.Interactor {
 func (api *API) CreateTenant() usecase.Interactor {
 	type createTenantInput struct {
 		AccountID   string `path:"accountId" required:"true"`
-		ID          string `json:"id" required:"true"`
 		Name        string `json:"name" required:"true"`
 		Description string `json:"description"`
 	}
@@ -750,13 +749,11 @@ func (api *API) CreateTenant() usecase.Interactor {
 			return fmt.Errorf("storage not initialized")
 		}
 
-		// Validate ID format
-		if err := ValidateID(input.ID); err != nil {
-			return fmt.Errorf("invalid tenant ID: %w", err)
-		}
+		// Auto-generate unique tenant ID
+		tenantID := storage.GenerateShortID()
 
 		tenant := &storage.Tenant{
-			ID:          input.ID,
+			ID:          tenantID,
 			AccountID:   input.AccountID,
 			Name:        input.Name,
 			Description: input.Description,
@@ -772,7 +769,7 @@ func (api *API) CreateTenant() usecase.Interactor {
 	})
 
 	u.SetTitle("Create Tenant")
-	u.SetDescription("Creates a new tenant for an account")
+	u.SetDescription("Creates a new tenant for an account with auto-generated ID")
 	u.SetTags("tenants")
 	u.SetExpectedErrors(usecaseStatus.InvalidArgument)
 
@@ -869,14 +866,16 @@ func (api *API) DeleteTenant() usecase.Interactor {
 
 // LoginRequest represents login request
 type LoginRequest struct {
-	Username string `json:"username"`
+	Email    string `json:"email"`
 	Password string `json:"password"`
 }
 
 // LoginResponse represents login response
 type LoginResponse struct {
-	Token   string `json:"token"`
-	Expires string `json:"expires"`
+	Token        string                `json:"token"`
+	RefreshToken string                `json:"refresh_token"`
+	ExpiresAt    time.Time             `json:"expires_at"`
+	User         services.User         `json:"user"`
 }
 
 // PasswordResetRequest represents password reset request
@@ -895,39 +894,106 @@ func (api *API) Login() usecase.Interactor {
 	u := usecase.NewInteractor(func(ctx context.Context, input LoginRequest, output *LoginResponse) error {
 		api.Services.IncrementAPIRequests()
 
-		// Check if user is in admin list
-		isAdmin := false
-		for _, adminUser := range api.Config.Auth.AdminUsers {
-			if adminUser == input.Username {
-				isAdmin = true
-				break
-			}
+		// Validate input
+		if input.Email == "" || input.Password == "" {
+			return fmt.Errorf("email and password are required")
 		}
 
-		// TODO: Implement actual password verification
-		// For now, just check if user exists in admin list
-		if !isAdmin {
-			return fmt.Errorf("invalid credentials")
+		// Check if Auth service is available
+		if api.Services.Auth == nil {
+			return fmt.Errorf("authentication service not available")
 		}
 
-		// Generate JWT token
-		token, err := middleware.GenerateToken(input.Username, isAdmin, api.Config.Auth)
+		// Authenticate user
+		user, err := api.Services.Auth.AuthenticateUser(ctx, input.Email, input.Password)
 		if err != nil {
-			return fmt.Errorf("failed to generate token: %w", err)
+			log.Warnf("Authentication failed for %s: %v", input.Email, err)
+			return fmt.Errorf("invalid email or password")
 		}
 
-		expiresAt := time.Now().Add(time.Duration(api.Config.Auth.TokenExpiryHours) * time.Hour)
+		// Check if user is active
+		if !user.Active {
+			return fmt.Errorf("account is inactive")
+		}
 
-		output.Token = token
-		output.Expires = expiresAt.Format(time.RFC3339)
+		// Generate JWT tokens
+		accessToken, refreshToken, expiresAt, err := api.Services.Auth.GenerateTokenPair(user)
+		if err != nil {
+			log.Errorf("Failed to generate tokens for %s: %v", user.Email, err)
+			return fmt.Errorf("failed to generate authentication tokens")
+		}
 
+		// Store session (ignore errors as session creation is not critical)
+		_ = api.Services.Auth.CreateSession(ctx, user.ID, accessToken, refreshToken, "", "", expiresAt, expiresAt.Add(7*24*time.Hour))
+
+		// Log audit event
+		if api.Services.AuditLog != nil {
+			api.Services.AuditLog.LogAction(ctx, user.ID, user.AccountID, "login", "", "", map[string]interface{}{})
+		}
+
+		output.Token = accessToken
+		output.RefreshToken = refreshToken
+		output.ExpiresAt = expiresAt
+		output.User = *user
+
+		log.Infof("User %s (%s) logged in successfully", user.Email, user.Role)
 		return nil
 	})
 
 	u.SetTitle("User Login")
-	u.SetDescription("Authenticates a user and returns a JWT token")
+	u.SetDescription("Authenticates a user via email/password and returns JWT tokens")
 	u.SetTags("auth")
-	// u.SetExpectedErrors(usecaseStatus.Unauthorized401, usecaseStatus.Internal)
+
+	return u
+}
+
+// RefreshTokenRequest represents token refresh request
+type RefreshTokenRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+// RefreshToken validates a refresh token and returns new access and refresh tokens
+func (api *API) RefreshToken() usecase.Interactor {
+	u := usecase.NewInteractor(func(ctx context.Context, input RefreshTokenRequest, output *LoginResponse) error {
+		api.Services.IncrementAPIRequests()
+
+		// Validate input
+		if input.RefreshToken == "" {
+			return fmt.Errorf("refresh token is required")
+		}
+
+		// Check if Auth service is available
+		if api.Services.Auth == nil {
+			return fmt.Errorf("authentication service not available")
+		}
+
+		// Refresh token and get new tokens
+		user, newAccessToken, newRefreshToken, expiresAt, err := api.Services.Auth.RefreshToken(ctx, input.RefreshToken)
+		if err != nil {
+			log.Warnf("Token refresh failed: %v", err)
+			return fmt.Errorf("invalid or expired refresh token")
+		}
+
+		// Store new session (ignore errors as session creation is not critical)
+		_ = api.Services.Auth.CreateSession(ctx, user.ID, newAccessToken, newRefreshToken, "", "", expiresAt, expiresAt.Add(7*24*time.Hour))
+
+		// Log audit event
+		if api.Services.AuditLog != nil {
+			api.Services.AuditLog.LogAction(ctx, user.ID, user.AccountID, "token_refresh", "", "", map[string]interface{}{})
+		}
+
+		output.Token = newAccessToken
+		output.RefreshToken = newRefreshToken
+		output.ExpiresAt = expiresAt
+		output.User = *user
+
+		log.Infof("Token refreshed for user %s", user.Email)
+		return nil
+	})
+
+	u.SetTitle("Refresh Token")
+	u.SetDescription("Validates a refresh token and returns new access and refresh tokens")
+	u.SetTags("auth")
 
 	return u
 }

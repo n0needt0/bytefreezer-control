@@ -65,7 +65,12 @@ type DatasetConfig struct {
 	Destination struct {
 		Type       string `json:"type"`
 		Connection struct {
-			URL         string `json:"url"`
+			URL         string                 `json:"url"`
+			Bucket      string                 `json:"bucket"`
+			Region      string                 `json:"region"`
+			Endpoint    string                 `json:"endpoint"`
+			SSL         bool                   `json:"ssl"`
+			Prefix      string                 `json:"prefix"`
 			Credentials struct {
 				Type      string `json:"type"`
 				AccessKey string `json:"access_key"`
@@ -74,14 +79,16 @@ type DatasetConfig struct {
 			TimeoutSeconds int `json:"timeout_seconds"`
 			Retries        int `json:"retries"`
 		} `json:"connection"`
-		Format       string `json:"format"`
-		Partitioning interface{} `json:"partitioning"`
-		Compression  string `json:"compression"`
+		Format       string                 `json:"format"`
+		Partitioning interface{}            `json:"partitioning"`
+		Compression  string                 `json:"compression"`
 		Custom       map[string]interface{} `json:"custom"`
 	} `json:"destination"`
 	Schedule   interface{} `json:"schedule"`
 	Monitoring interface{} `json:"monitoring"`
 	Transform  interface{} `json:"transform"`
+	Parquet    map[string]interface{} `json:"parquet,omitempty"`
+	Custom     map[string]interface{} `json:"custom,omitempty"`
 }
 
 // NewClient creates a new control service client

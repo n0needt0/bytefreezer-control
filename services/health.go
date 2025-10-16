@@ -159,6 +159,10 @@ func (h *HealthService) UpdateServiceHealth(serviceType, instanceID, instanceAPI
 
 	log.Debugf("Successfully updated/inserted health for %s:%s (status: %s)", serviceType, instanceID, status)
 
+	// Mark stale services as unhealthy (services with no heartbeat for 60+ seconds)
+	// Do this after every health update to keep status current
+	go h.markStaleServicesUnhealthy()
+
 	return nil
 }
 
@@ -451,6 +455,32 @@ func (h *HealthService) RegisterSelf(serviceType, instanceAPI string, config map
 	}
 
 	return h.RegisterService(registration)
+}
+
+// markStaleServicesUnhealthy marks services as unhealthy if they haven't sent heartbeat in 60 seconds
+// Called asynchronously after each health update to keep status current
+func (h *HealthService) markStaleServicesUnhealthy() {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+
+	// Mark services as Unhealthy if last_seen is older than 60 seconds (2 missed 30-second heartbeats)
+	result, err := h.db.Exec(`
+		UPDATE health_current
+		SET status = 'Unhealthy',
+		    updated_at = NOW()
+		WHERE last_seen < NOW() - INTERVAL '60 seconds'
+		  AND status != 'Unhealthy'
+	`)
+
+	if err != nil {
+		log.Errorf("Failed to mark stale services as unhealthy: %v", err)
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected > 0 {
+		log.Infof("Marked %d stale services as Unhealthy (no heartbeat for 60+ seconds)", rowsAffected)
+	}
 }
 
 // UpdateSelfHealth updates the control service's own health status

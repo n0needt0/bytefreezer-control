@@ -122,6 +122,7 @@ type Storage interface {
 	// Tenant operations (scoped to account)
 	CreateTenant(ctx context.Context, tenant *Tenant) error
 	GetTenant(ctx context.Context, accountID, tenantID string) (*Tenant, error)
+	GetTenantByID(ctx context.Context, tenantID string) (*Tenant, error) // Direct lookup by ID (for proxy validation)
 	UpdateTenant(ctx context.Context, tenant *Tenant) error
 	DeleteTenant(ctx context.Context, accountID, tenantID string) error
 	ListTenants(ctx context.Context, accountID string, opts ListOptions) (*ListResult[Tenant], error)

@@ -107,6 +107,9 @@ func (api *API) NewRouter() *web.Service {
 	service.Put("/api/v1/accounts/{accountId}/tenants/{tenantId}", api.UpdateTenant())
 	service.Delete("/api/v1/accounts/{accountId}/tenants/{tenantId}", api.DeleteTenant())
 
+	// Direct tenant lookup endpoint (for proxy validation - no account ID required)
+	service.Get("/api/v1/tenants/{tenantId}", api.GetTenantDirect())
+
 	// Dataset management endpoints (scoped to tenant)
 	service.Get("/api/v1/tenants/{tenantId}/datasets", api.ListDatasets())
 	service.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}", api.GetDataset())

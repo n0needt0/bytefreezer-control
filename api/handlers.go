@@ -733,6 +733,37 @@ func (api *API) GetTenant() usecase.Interactor {
 	return u
 }
 
+// GetTenantDirect returns a tenant by ID only (for proxy validation)
+func (api *API) GetTenantDirect() usecase.Interactor {
+	type getTenantDirectInput struct {
+		TenantID string `path:"tenantId" required:"true"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input getTenantDirectInput, output *storage.Tenant) error {
+		api.Services.IncrementAPIRequests()
+		api.Services.IncrementDatabaseQueries()
+
+		if api.Services.Storage == nil {
+			return fmt.Errorf("storage not initialized")
+		}
+
+		tenant, err := api.Services.Storage.GetTenantByID(ctx, input.TenantID)
+		if err != nil {
+			return fmt.Errorf("failed to get tenant: %w", err)
+		}
+
+		*output = *tenant
+		return nil
+	})
+
+	u.SetTitle("Get Tenant Direct")
+	u.SetDescription("Returns a specific tenant by ID (direct lookup for proxy validation)")
+	u.SetTags("tenants")
+	u.SetExpectedErrors(usecaseStatus.NotFound)
+
+	return u
+}
+
 // CreateTenant creates a new tenant
 func (api *API) CreateTenant() usecase.Interactor {
 	type createTenantInput struct {

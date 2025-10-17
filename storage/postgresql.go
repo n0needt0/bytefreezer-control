@@ -302,6 +302,33 @@ func (p *PostgreSQLStorage) GetTenant(ctx context.Context, accountID, tenantID s
 	return &tenant, nil
 }
 
+// GetTenantByID gets a tenant by ID alone (without account ID) - used for proxy validation
+func (p *PostgreSQLStorage) GetTenantByID(ctx context.Context, tenantID string) (*Tenant, error) {
+	query := `
+		SELECT id, account_id, name, display_name, description, active, created_at, updated_at, config
+		FROM control_tenants WHERE id = $1`
+
+	var tenant Tenant
+	var configJSON []byte
+
+	err := p.db.QueryRowContext(ctx, query, tenantID).Scan(
+		&tenant.ID, &tenant.AccountID, &tenant.Name, &tenant.DisplayName, &tenant.Description, &tenant.Active,
+		&tenant.CreatedAt, &tenant.UpdatedAt, &configJSON)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to get tenant by ID: %w", err)
+	}
+
+	if err := json.Unmarshal(configJSON, &tenant.Config); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal tenant config: %w", err)
+	}
+
+	return &tenant, nil
+}
+
 func (p *PostgreSQLStorage) UpdateTenant(ctx context.Context, tenant *Tenant) error {
 	tenant.UpdatedAt = time.Now()
 

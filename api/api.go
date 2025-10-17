@@ -99,6 +99,7 @@ func (api *API) NewRouter() *web.Service {
 	service.Post("/api/v1/accounts", api.CreateAccount())
 	service.Put("/api/v1/accounts/{accountId}", api.UpdateAccount())
 	service.Delete("/api/v1/accounts/{accountId}", api.DeleteAccount())
+	service.Post("/api/v1/accounts/{accountId}/assume-admin", api.AssumeAccountAdmin())
 
 	// Tenant management endpoints (scoped to account)
 	service.Get("/api/v1/accounts/{accountId}/tenants", api.ListTenants())

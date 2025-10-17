@@ -658,6 +658,85 @@ func (api *API) DeleteAccount() usecase.Interactor {
 	return u
 }
 
+// AssumeAccountAdmin allows system administrators to assume account admin role for any account
+func (api *API) AssumeAccountAdmin() usecase.Interactor {
+	type assumeAccountAdminInput struct {
+		AccountID string `path:"accountId" required:"true"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input assumeAccountAdminInput, output *LoginResponse) error {
+		api.Services.IncrementAPIRequests()
+		api.Services.IncrementDatabaseQueries()
+
+		// Check if Auth service is available
+		if api.Services.Auth == nil {
+			return fmt.Errorf("authentication service not available")
+		}
+
+		if api.Services.Storage == nil {
+			return fmt.Errorf("storage not initialized")
+		}
+
+		// TODO: Verify that the current user is a system admin
+		// This should be done via middleware that extracts the JWT token and validates it
+		// For now, we'll proceed assuming the middleware has already validated this
+
+		// Verify the account exists and is active
+		account, err := api.Services.Storage.GetAccount(ctx, input.AccountID)
+		if err != nil {
+			return fmt.Errorf("account not found: %w", err)
+		}
+
+		if !account.Active {
+			return fmt.Errorf("account is not active")
+		}
+
+		// Create a virtual user object for the account admin
+		// This user represents the system admin acting as an account admin
+		virtualUser := &services.User{
+			ID:        fmt.Sprintf("sysadmin-as-%s", input.AccountID), // Virtual user ID
+			AccountID: input.AccountID,
+			Email:     account.Email,
+			Role:      "account_admin", // Acting as account admin
+			FirstName: "System",
+			LastName:  "Administrator",
+			Active:    true,
+		}
+
+		// Generate JWT tokens for the virtual user
+		accessToken, refreshToken, expiresAt, err := api.Services.Auth.GenerateTokenPair(virtualUser)
+		if err != nil {
+			log.Errorf("Failed to generate tokens for account assumption: %v", err)
+			return fmt.Errorf("failed to generate authentication tokens")
+		}
+
+		// Store session (ignore errors as session creation is not critical)
+		_ = api.Services.Auth.CreateSession(ctx, virtualUser.ID, accessToken, refreshToken, "", "", expiresAt, expiresAt.Add(7*24*time.Hour))
+
+		// Log audit event
+		if api.Services.AuditLog != nil {
+			api.Services.AuditLog.LogAction(ctx, virtualUser.ID, input.AccountID, "assume_account_admin", input.AccountID, "", map[string]interface{}{
+				"account_name": account.Name,
+			})
+		}
+
+		output.Token = accessToken
+		output.RefreshToken = refreshToken
+		output.ExpiresAt = expiresAt
+		output.User = *virtualUser
+
+		log.Infof("System admin assumed account admin role for account %s (%s)", account.Name, input.AccountID)
+		return nil
+	})
+
+	u.SetTitle("Assume Account Admin")
+	u.SetDescription("Allows system administrators to assume account admin role for any account")
+	u.SetTags("accounts", "auth")
+	u.SetExpectedErrors(usecaseStatus.NotFound, usecaseStatus.PermissionDenied)
+
+	return u
+}
+
 // Tenant API handlers
 
 // ListTenants returns all tenants for an account

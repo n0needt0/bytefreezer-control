@@ -118,6 +118,14 @@ func (api *API) NewRouter() *web.Service {
 	service.Put("/api/v1/tenants/{tenantId}/datasets/{datasetId}", api.UpdateDataset())
 	service.Delete("/api/v1/tenants/{tenantId}/datasets/{datasetId}", api.DeleteDataset())
 
+	// User management endpoints
+	service.Get("/api/v1/users", api.ListUsers())
+	service.Get("/api/v1/users/{userId}", api.GetUser())
+	service.Post("/api/v1/users", api.CreateUser())
+	service.Put("/api/v1/users/{userId}", api.UpdateUser())
+	service.Delete("/api/v1/users/{userId}", api.DeleteUser())
+	service.Post("/api/v1/users/{userId}/toggle-active", api.ToggleUserActive())
+
 	// API documentation
 	service.Docs("/v1/docs", swgui.New)
 

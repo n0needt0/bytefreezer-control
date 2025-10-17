@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -352,4 +353,248 @@ func GenerateRandomToken(length int) (string, error) {
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(bytes), nil
+}
+
+// ListUsers returns all users, optionally filtered by account ID
+func (a *AuthService) ListUsers(ctx context.Context, accountID string) ([]User, error) {
+	var users []User
+	var query string
+	var args []interface{}
+
+	if accountID == "" {
+		// System admin viewing all users
+		query = `
+			SELECT id, account_id, email, role, first_name, last_name,
+			       active, email_verified, oauth_provider, last_login_at, created_at, updated_at
+			FROM control_users
+			ORDER BY created_at DESC
+		`
+	} else {
+		// Account admin viewing only their account's users
+		query = `
+			SELECT id, account_id, email, role, first_name, last_name,
+			       active, email_verified, oauth_provider, last_login_at, created_at, updated_at
+			FROM control_users
+			WHERE account_id = $1
+			ORDER BY created_at DESC
+		`
+		args = append(args, accountID)
+	}
+
+	rows, err := a.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query users: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var user User
+		var firstName, lastName sql.NullString
+		var lastLoginAt sql.NullTime
+		var oauthProvider sql.NullString
+
+		err := rows.Scan(
+			&user.ID, &user.AccountID, &user.Email, &user.Role,
+			&firstName, &lastName, &user.Active, &user.EmailVerified,
+			&oauthProvider, &lastLoginAt, &user.CreatedAt, &user.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan user: %w", err)
+		}
+
+		// Populate optional fields
+		if firstName.Valid {
+			user.FirstName = firstName.String
+		}
+		if lastName.Valid {
+			user.LastName = lastName.String
+		}
+		if lastLoginAt.Valid {
+			user.LastLoginAt = &lastLoginAt.Time
+		}
+		if oauthProvider.Valid {
+			user.OAuthProvider = &oauthProvider.String
+		}
+
+		users = append(users, user)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating users: %w", err)
+	}
+
+	return users, nil
+}
+
+// CreateUser creates a new user with the given details
+func (a *AuthService) CreateUser(ctx context.Context, accountID, email, password, role, firstName, lastName string) (*User, error) {
+	// Hash the password
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	// Generate a unique user ID
+	userID := fmt.Sprintf("usr_%d", time.Now().UnixNano())
+
+	query := `
+		INSERT INTO control_users (id, account_id, email, password_hash, role, first_name, last_name, active, email_verified)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, true, false)
+		RETURNING id, account_id, email, role, first_name, last_name, active, email_verified, created_at, updated_at
+	`
+
+	var user User
+	err = a.db.QueryRowContext(ctx, query, userID, accountID, email, string(passwordHash), role, firstName, lastName).Scan(
+		&user.ID, &user.AccountID, &user.Email, &user.Role, &user.FirstName, &user.LastName,
+		&user.Active, &user.EmailVerified, &user.CreatedAt, &user.UpdatedAt,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create user: %w", err)
+	}
+
+	log.Infof("Created new user %s (%s) with role %s", user.Email, user.ID, user.Role)
+	return &user, nil
+}
+
+// UpdateUser updates user details
+func (a *AuthService) UpdateUser(ctx context.Context, userID, firstName, lastName, role string, active *bool) (*User, error) {
+	// Build update query dynamically
+	updates := []string{}
+	args := []interface{}{}
+	argIndex := 1
+
+	if firstName != "" {
+		updates = append(updates, fmt.Sprintf("first_name = $%d", argIndex))
+		args = append(args, firstName)
+		argIndex++
+	}
+
+	if lastName != "" {
+		updates = append(updates, fmt.Sprintf("last_name = $%d", argIndex))
+		args = append(args, lastName)
+		argIndex++
+	}
+
+	if role != "" {
+		updates = append(updates, fmt.Sprintf("role = $%d", argIndex))
+		args = append(args, role)
+		argIndex++
+	}
+
+	if active != nil {
+		updates = append(updates, fmt.Sprintf("active = $%d", argIndex))
+		args = append(args, *active)
+		argIndex++
+	}
+
+	if len(updates) == 0 {
+		// No updates requested, just return current user
+		return a.GetUserByID(ctx, userID)
+	}
+
+	// Always update the updated_at timestamp
+	updates = append(updates, "updated_at = NOW()")
+
+	// Add user ID as the last argument
+	args = append(args, userID)
+
+	query := fmt.Sprintf(`
+		UPDATE control_users
+		SET %s
+		WHERE id = $%d
+	`, strings.Join(updates, ", "), argIndex)
+
+	_, err := a.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update user: %w", err)
+	}
+
+	// Return updated user
+	return a.GetUserByID(ctx, userID)
+}
+
+// DeleteUser deletes a user by ID
+func (a *AuthService) DeleteUser(ctx context.Context, userID string) error {
+	query := `DELETE FROM control_users WHERE id = $1`
+	result, err := a.db.ExecContext(ctx, query, userID)
+	if err != nil {
+		return fmt.Errorf("failed to delete user: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("user not found")
+	}
+
+	log.Infof("Deleted user %s", userID)
+	return nil
+}
+
+// ToggleUserActive activates or deactivates a user
+func (a *AuthService) ToggleUserActive(ctx context.Context, userID string, active bool) (*User, error) {
+	query := `
+		UPDATE control_users
+		SET active = $1, updated_at = NOW()
+		WHERE id = $2
+	`
+
+	result, err := a.db.ExecContext(ctx, query, active, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update user status: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("failed to check rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return nil, fmt.Errorf("user not found")
+	}
+
+	status := "deactivated"
+	if active {
+		status = "activated"
+	}
+	log.Infof("User %s %s", userID, status)
+
+	// Return updated user
+	return a.GetUserByID(ctx, userID)
+}
+
+// ChangePassword updates a user's password
+func (a *AuthService) ChangePassword(ctx context.Context, userID, newPassword string) error {
+	// Hash the new password
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	query := `
+		UPDATE control_users
+		SET password_hash = $1, updated_at = NOW()
+		WHERE id = $2
+	`
+
+	result, err := a.db.ExecContext(ctx, query, string(passwordHash), userID)
+	if err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("user not found")
+	}
+
+	log.Infof("Password changed for user %s", userID)
+	return nil
 }

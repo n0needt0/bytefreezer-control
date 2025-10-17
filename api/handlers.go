@@ -1370,3 +1370,284 @@ func (api *API) DeleteDataset() usecase.Interactor {
 	return u
 }
 
+// User Management API handlers
+
+// ListUsers returns all users, optionally filtered by account ID
+func (api *API) ListUsers() usecase.Interactor {
+	type listUsersInput struct {
+		AccountID string `query:"account_id"`
+	}
+
+	type listUsersOutput struct {
+		Items []services.User `json:"items"`
+		Total int             `json:"total"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input listUsersInput, output *listUsersOutput) error {
+		api.Services.IncrementAPIRequests()
+		api.Services.IncrementDatabaseQueries()
+
+		if api.Services.Auth == nil {
+			return fmt.Errorf("authentication service not available")
+		}
+
+		users, err := api.Services.Auth.ListUsers(ctx, input.AccountID)
+		if err != nil {
+			return fmt.Errorf("failed to list users: %w", err)
+		}
+
+		output.Items = users
+		output.Total = len(users)
+		return nil
+	})
+
+	u.SetTitle("List Users")
+	u.SetDescription("Returns all users, optionally filtered by account ID")
+	u.SetTags("users")
+
+	return u
+}
+
+// GetUser returns a specific user by ID
+func (api *API) GetUser() usecase.Interactor {
+	type getUserInput struct {
+		UserID string `path:"userId" required:"true"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input getUserInput, output *services.User) error {
+		api.Services.IncrementAPIRequests()
+		api.Services.IncrementDatabaseQueries()
+
+		if api.Services.Auth == nil {
+			return fmt.Errorf("authentication service not available")
+		}
+
+		user, err := api.Services.Auth.GetUserByID(ctx, input.UserID)
+		if err != nil {
+			return fmt.Errorf("failed to get user: %w", err)
+		}
+
+		*output = *user
+		return nil
+	})
+
+	u.SetTitle("Get User")
+	u.SetDescription("Returns a specific user by ID")
+	u.SetTags("users")
+	u.SetExpectedErrors(usecaseStatus.NotFound)
+
+	return u
+}
+
+// CreateUser creates a new user
+func (api *API) CreateUser() usecase.Interactor {
+	type createUserInput struct {
+		AccountID string `json:"account_id" required:"true"`
+		Email     string `json:"email" required:"true"`
+		Password  string `json:"password" required:"true"`
+		FirstName string `json:"first_name" required:"true"`
+		LastName  string `json:"last_name" required:"true"`
+		Role      string `json:"role" required:"true"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input createUserInput, output *services.User) error {
+		api.Services.IncrementAPIRequests()
+		api.Services.IncrementDatabaseQueries()
+
+		if api.Services.Auth == nil {
+			return fmt.Errorf("authentication service not available")
+		}
+
+		// Validate role
+		validRoles := map[string]bool{
+			"system_admin":     true,
+			"account_admin":    true,
+			"account_readonly": true,
+		}
+		if !validRoles[input.Role] {
+			return fmt.Errorf("invalid role: %s", input.Role)
+		}
+
+		user, err := api.Services.Auth.CreateUser(
+			ctx,
+			input.AccountID,
+			input.Email,
+			input.Password,
+			input.Role,
+			input.FirstName,
+			input.LastName,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to create user: %w", err)
+		}
+
+		// Log audit event
+		if api.Services.AuditLog != nil {
+			api.Services.AuditLog.LogAction(ctx, user.ID, input.AccountID, "user_created", user.ID, "", map[string]interface{}{
+				"email": user.Email,
+				"role":  user.Role,
+			})
+		}
+
+		*output = *user
+		return nil
+	})
+
+	u.SetTitle("Create User")
+	u.SetDescription("Creates a new user")
+	u.SetTags("users")
+	u.SetExpectedErrors(usecaseStatus.InvalidArgument, usecaseStatus.AlreadyExists)
+
+	return u
+}
+
+// UpdateUser updates an existing user
+func (api *API) UpdateUser() usecase.Interactor {
+	type updateUserInput struct {
+		UserID    string `path:"userId" required:"true"`
+		FirstName string `json:"first_name"`
+		LastName  string `json:"last_name"`
+		Role      string `json:"role"`
+		Active    *bool  `json:"active"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input updateUserInput, output *services.User) error {
+		api.Services.IncrementAPIRequests()
+		api.Services.IncrementDatabaseQueries()
+
+		if api.Services.Auth == nil {
+			return fmt.Errorf("authentication service not available")
+		}
+
+		// Validate role if provided
+		if input.Role != "" {
+			validRoles := map[string]bool{
+				"system_admin":     true,
+				"account_admin":    true,
+				"account_readonly": true,
+			}
+			if !validRoles[input.Role] {
+				return fmt.Errorf("invalid role: %s", input.Role)
+			}
+		}
+
+		user, err := api.Services.Auth.UpdateUser(
+			ctx,
+			input.UserID,
+			input.FirstName,
+			input.LastName,
+			input.Role,
+			input.Active,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to update user: %w", err)
+		}
+
+		// Log audit event
+		if api.Services.AuditLog != nil {
+			api.Services.AuditLog.LogAction(ctx, user.ID, user.AccountID, "user_updated", user.ID, "", map[string]interface{}{
+				"email": user.Email,
+			})
+		}
+
+		*output = *user
+		return nil
+	})
+
+	u.SetTitle("Update User")
+	u.SetDescription("Updates an existing user")
+	u.SetTags("users")
+	u.SetExpectedErrors(usecaseStatus.NotFound, usecaseStatus.InvalidArgument)
+
+	return u
+}
+
+// DeleteUser deletes a user
+func (api *API) DeleteUser() usecase.Interactor {
+	type deleteUserInput struct {
+		UserID string `path:"userId" required:"true"`
+	}
+
+	type deleteUserOutput struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input deleteUserInput, output *deleteUserOutput) error {
+		api.Services.IncrementAPIRequests()
+		api.Services.IncrementDatabaseQueries()
+
+		if api.Services.Auth == nil {
+			return fmt.Errorf("authentication service not available")
+		}
+
+		// Log audit event before deletion
+		if api.Services.AuditLog != nil {
+			user, err := api.Services.Auth.GetUserByID(ctx, input.UserID)
+			if err == nil {
+				api.Services.AuditLog.LogAction(ctx, user.ID, user.AccountID, "user_deleted", user.ID, "", map[string]interface{}{
+					"email": user.Email,
+				})
+			}
+		}
+
+		if err := api.Services.Auth.DeleteUser(ctx, input.UserID); err != nil {
+			return fmt.Errorf("failed to delete user: %w", err)
+		}
+
+		output.Success = true
+		output.Message = fmt.Sprintf("User %s deleted successfully", input.UserID)
+		return nil
+	})
+
+	u.SetTitle("Delete User")
+	u.SetDescription("Deletes a user")
+	u.SetTags("users")
+	u.SetExpectedErrors(usecaseStatus.NotFound)
+
+	return u
+}
+
+// ToggleUserActive activates or deactivates a user
+func (api *API) ToggleUserActive() usecase.Interactor {
+	type toggleUserActiveInput struct {
+		UserID string `path:"userId" required:"true"`
+		Active bool   `json:"active" required:"true"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input toggleUserActiveInput, output *services.User) error {
+		api.Services.IncrementAPIRequests()
+		api.Services.IncrementDatabaseQueries()
+
+		if api.Services.Auth == nil {
+			return fmt.Errorf("authentication service not available")
+		}
+
+		user, err := api.Services.Auth.ToggleUserActive(ctx, input.UserID, input.Active)
+		if err != nil {
+			return fmt.Errorf("failed to toggle user status: %w", err)
+		}
+
+		// Log audit event
+		if api.Services.AuditLog != nil {
+			action := "user_deactivated"
+			if input.Active {
+				action = "user_activated"
+			}
+			api.Services.AuditLog.LogAction(ctx, user.ID, user.AccountID, action, user.ID, "", map[string]interface{}{
+				"email": user.Email,
+			})
+		}
+
+		*output = *user
+		return nil
+	})
+
+	u.SetTitle("Toggle User Active Status")
+	u.SetDescription("Activates or deactivates a user")
+	u.SetTags("users")
+	u.SetExpectedErrors(usecaseStatus.NotFound)
+
+	return u
+}
+

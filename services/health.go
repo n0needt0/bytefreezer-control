@@ -494,3 +494,44 @@ func (h *HealthService) UpdateSelfHealth(serviceType, instanceAPI string, config
 
 	return h.UpdateServiceHealth(serviceType, hostname, instanceAPI, "Healthy", config, metrics, nil)
 }
+
+// GetPluginSchemas returns plugin schemas from all registered proxy instances
+// It extracts the plugin_schemas field from the configuration of bytefreezer-proxy services
+func (h *HealthService) GetPluginSchemas() ([]map[string]interface{}, error) {
+	records, err := h.GetHealthRecordsByService("bytefreezer-proxy")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get proxy health records: %w", err)
+	}
+
+	// Use a map to deduplicate schemas by name (multiple proxies may have same plugins)
+	schemaMap := make(map[string]map[string]interface{})
+
+	for _, record := range records {
+		// Extract plugin_schemas from configuration
+		if record.Configuration != nil {
+			if pluginSchemas, ok := record.Configuration["plugin_schemas"]; ok {
+				// Type assert to []interface{} (JSON array)
+				if schemasArray, ok := pluginSchemas.([]interface{}); ok {
+					for _, schema := range schemasArray {
+						if schemaData, ok := schema.(map[string]interface{}); ok {
+							// Use plugin name as key for deduplication
+							if name, ok := schemaData["name"].(string); ok {
+								schemaMap[name] = schemaData
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Convert map to slice
+	result := make([]map[string]interface{}, 0, len(schemaMap))
+	for _, schema := range schemaMap {
+		result = append(result, schema)
+	}
+
+	log.Infof("Retrieved %d unique plugin schemas from %d proxy instances", len(result), len(records))
+
+	return result, nil
+}

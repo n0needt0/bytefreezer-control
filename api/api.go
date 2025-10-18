@@ -126,6 +126,9 @@ func (api *API) NewRouter() *web.Service {
 	service.Delete("/api/v1/users/{userId}", api.DeleteUser())
 	service.Post("/api/v1/users/{userId}/toggle-active", api.ToggleUserActive())
 
+	// Plugin schema endpoints (v2)
+	service.Get("/api/v2/plugins", api.GetPluginSchemas())
+
 	// API documentation
 	service.Docs("/v1/docs", swgui.New)
 

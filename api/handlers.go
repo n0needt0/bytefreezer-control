@@ -1651,3 +1651,40 @@ func (api *API) ToggleUserActive() usecase.Interactor {
 	return u
 }
 
+// Plugin Schema API handlers
+
+// PluginSchemasResponse represents plugin schemas response
+type PluginSchemasResponse struct {
+	Plugins []map[string]interface{} `json:"plugins"`
+	Count   int                      `json:"count"`
+}
+
+// GetPluginSchemas returns plugin schemas from all registered proxy instances
+func (api *API) GetPluginSchemas() usecase.Interactor {
+	u := usecase.NewInteractor(func(ctx context.Context, input struct{}, output *PluginSchemasResponse) error {
+		api.Services.IncrementAPIRequests()
+
+		if api.Services.HealthService == nil {
+			return fmt.Errorf("health service not available")
+		}
+
+		schemas, err := api.Services.HealthService.GetPluginSchemas()
+		if err != nil {
+			return fmt.Errorf("failed to get plugin schemas: %w", err)
+		}
+
+		output.Plugins = schemas
+		output.Count = len(schemas)
+
+		log.Infof("Retrieved %d plugin schemas for client", len(schemas))
+
+		return nil
+	})
+
+	u.SetTitle("Get Plugin Schemas")
+	u.SetDescription("Returns plugin configuration schemas from all registered proxy instances")
+	u.SetTags("plugins", "schemas")
+
+	return u
+}
+

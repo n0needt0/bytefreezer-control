@@ -424,6 +424,48 @@ func (p *PostgreSQLStorage) ListTenants(ctx context.Context, accountID string, o
 	}, nil
 }
 
+// ListAllTenants lists all tenants across all accounts (flat list for UI)
+func (p *PostgreSQLStorage) ListAllTenants(ctx context.Context, opts ListOptions) (*ListResult[Tenant], error) {
+	if opts.Limit <= 0 {
+		opts.Limit = 100 // Higher default for flat list
+	}
+
+	query := `
+		SELECT id, account_id, name, description, active, created_at, updated_at, config
+		FROM control_tenants
+		ORDER BY created_at DESC
+		LIMIT $1`
+
+	rows, err := p.db.QueryContext(ctx, query, opts.Limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list all tenants: %w", err)
+	}
+	defer rows.Close()
+
+	var tenants []Tenant
+	for rows.Next() {
+		var tenant Tenant
+		var configJSON []byte
+
+		err := rows.Scan(&tenant.ID, &tenant.AccountID, &tenant.Name, &tenant.Description, &tenant.Active,
+			&tenant.CreatedAt, &tenant.UpdatedAt, &configJSON)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan tenant: %w", err)
+		}
+
+		if err := json.Unmarshal(configJSON, &tenant.Config); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal tenant config: %w", err)
+		}
+
+		tenants = append(tenants, tenant)
+	}
+
+	return &ListResult[Tenant]{
+		Items: tenants,
+		Total: len(tenants),
+	}, nil
+}
+
 // Advanced tenant queries using PostgreSQL JSONB operations
 func (p *PostgreSQLStorage) FindTenantsBySubscriptionTier(ctx context.Context, tier string) ([]*Tenant, error) {
 	query := `
@@ -692,6 +734,90 @@ func (p *PostgreSQLStorage) ListDatasets(ctx context.Context, tenantID string, o
 	countArgs := []interface{}{tenantID}
 	if opts.Filter != "" {
 		countQuery += " AND (name ILIKE $2 OR description ILIKE $3)"
+		filterPattern := "%" + opts.Filter + "%"
+		countArgs = append(countArgs, filterPattern, filterPattern)
+	}
+
+	var total int
+	err = p.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dataset count: %w", err)
+	}
+
+	return &ListResult[Dataset]{
+		Items: datasets,
+		Total: total,
+	}, nil
+}
+
+// ListAllDatasets lists all datasets across all tenants (flat list for UI)
+func (p *PostgreSQLStorage) ListAllDatasets(ctx context.Context, opts ListOptions) (*ListResult[Dataset], error) {
+	query := `
+		SELECT id, tenant_id, name, description, active, status, created_at, updated_at,
+			config, records_processed, last_processed_at, error_count, last_error, processing_metrics
+		FROM control_datasets WHERE 1=1`
+
+	args := []interface{}{}
+	argIndex := 1
+
+	// Add filtering if specified
+	if opts.Filter != "" {
+		query += fmt.Sprintf(" AND (name ILIKE $%d OR description ILIKE $%d)", argIndex, argIndex+1)
+		filterPattern := "%" + opts.Filter + "%"
+		args = append(args, filterPattern, filterPattern)
+		argIndex += 2
+	}
+
+	// Add ordering and pagination
+	query += " ORDER BY created_at DESC"
+	if opts.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT $%d", argIndex)
+		args = append(args, opts.Limit)
+	} else {
+		query += " LIMIT 100" // Default limit for safety
+	}
+
+	rows, err := p.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list all datasets: %w", err)
+	}
+	defer rows.Close()
+
+	var datasets []Dataset
+	for rows.Next() {
+		var dataset Dataset
+		var configJSON, metricsJSON []byte
+		var lastError sql.NullString
+
+		err := rows.Scan(
+			&dataset.ID, &dataset.TenantID, &dataset.Name, &dataset.Description,
+			&dataset.Active, &dataset.Status, &dataset.CreatedAt, &dataset.UpdatedAt,
+			&configJSON, &dataset.RecordsProcessed, &dataset.LastProcessedAt,
+			&dataset.ErrorCount, &lastError, &metricsJSON)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan dataset: %w", err)
+		}
+
+		if lastError.Valid {
+			dataset.LastError = lastError.String
+		}
+
+		if err := json.Unmarshal(configJSON, &dataset.Config); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal dataset config: %w", err)
+		}
+
+		if len(metricsJSON) > 0 {
+			dataset.ProcessingMetrics = string(metricsJSON)
+		}
+
+		datasets = append(datasets, dataset)
+	}
+
+	// Get total count
+	countQuery := `SELECT COUNT(*) FROM control_datasets WHERE 1=1`
+	countArgs := []interface{}{}
+	if opts.Filter != "" {
+		countQuery += " AND (name ILIKE $1 OR description ILIKE $2)"
 		filterPattern := "%" + opts.Filter + "%"
 		countArgs = append(countArgs, filterPattern, filterPattern)
 	}

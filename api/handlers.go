@@ -1651,6 +1651,114 @@ func (api *API) ToggleUserActive() usecase.Interactor {
 	return u
 }
 
+// Flat List API handlers (for UI convenience)
+
+// ListAllTenants returns all tenants across all accounts
+func (api *API) ListAllTenants() usecase.Interactor {
+	type listAllTenantsInput struct {
+		Limit int `query:"limit"`
+	}
+
+	type listAllTenantsOutput struct {
+		Items []storage.Tenant `json:"items"`
+		Total int              `json:"total"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input listAllTenantsInput, output *listAllTenantsOutput) error {
+		api.Services.IncrementAPIRequests()
+		api.Services.IncrementDatabaseQueries()
+
+		if api.Services.Storage == nil {
+			return fmt.Errorf("storage not initialized")
+		}
+
+		opts := storage.ListOptions{
+			Limit: input.Limit,
+		}
+
+		result, err := api.Services.Storage.ListAllTenants(ctx, opts)
+		if err != nil {
+			return fmt.Errorf("failed to list all tenants: %w", err)
+		}
+
+		output.Items = result.Items
+		output.Total = result.Total
+		return nil
+	})
+
+	u.SetTitle("List All Tenants")
+	u.SetDescription("Returns all tenants across all accounts (flat list)")
+	u.SetTags("tenants")
+
+	return u
+}
+
+// ListAllDatasets returns all datasets across all tenants
+func (api *API) ListAllDatasets() usecase.Interactor {
+	type listAllDatasetsInput struct {
+		Search   string `query:"search"`
+		TenantID string `query:"tenant_id"`
+		Active   string `query:"active"`
+		Limit    int    `query:"limit"`
+	}
+
+	type listAllDatasetsOutput struct {
+		Items []storage.Dataset `json:"items"`
+		Total int               `json:"total"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input listAllDatasetsInput, output *listAllDatasetsOutput) error {
+		api.Services.IncrementAPIRequests()
+		api.Services.IncrementDatabaseQueries()
+
+		if api.Services.Storage == nil {
+			return fmt.Errorf("storage not initialized")
+		}
+
+		opts := storage.ListOptions{
+			Limit:  input.Limit,
+			Filter: input.Search,
+		}
+
+		result, err := api.Services.Storage.ListAllDatasets(ctx, opts)
+		if err != nil {
+			return fmt.Errorf("failed to list all datasets: %w", err)
+		}
+
+		// Apply client-side filtering for tenant_id and active since we don't have DB support yet
+		var filtered []storage.Dataset
+		for _, dataset := range result.Items {
+			// Filter by tenant_id if specified
+			if input.TenantID != "" && input.TenantID != "all" && dataset.TenantID != input.TenantID {
+				continue
+			}
+
+			// Filter by active status if specified
+			if input.Active != "" && input.Active != "all" {
+				isActive := dataset.Active
+				if input.Active == "active" && !isActive {
+					continue
+				}
+				if input.Active == "inactive" && isActive {
+					continue
+				}
+			}
+
+			filtered = append(filtered, dataset)
+		}
+
+		output.Items = filtered
+		output.Total = len(filtered)
+		return nil
+	})
+
+	u.SetTitle("List All Datasets")
+	u.SetDescription("Returns all datasets across all tenants (flat list with filtering)")
+	u.SetTags("datasets")
+
+	return u
+}
+
 // Plugin Schema API handlers
 
 // PluginSchemasResponse represents plugin schemas response

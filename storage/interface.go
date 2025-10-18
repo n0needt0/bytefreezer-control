@@ -126,6 +126,7 @@ type Storage interface {
 	UpdateTenant(ctx context.Context, tenant *Tenant) error
 	DeleteTenant(ctx context.Context, accountID, tenantID string) error
 	ListTenants(ctx context.Context, accountID string, opts ListOptions) (*ListResult[Tenant], error)
+	ListAllTenants(ctx context.Context, opts ListOptions) (*ListResult[Tenant], error) // List all tenants across all accounts
 
 	// Advanced tenant queries
 	FindTenantsBySubscriptionTier(ctx context.Context, tier string) ([]*Tenant, error)
@@ -138,6 +139,7 @@ type Storage interface {
 	UpdateDataset(ctx context.Context, dataset *Dataset) error
 	DeleteDataset(ctx context.Context, tenantID, datasetID string) error
 	ListDatasets(ctx context.Context, tenantID string, opts ListOptions) (*ListResult[Dataset], error)
+	ListAllDatasets(ctx context.Context, opts ListOptions) (*ListResult[Dataset], error) // List all datasets across all tenants
 	
 	// Advanced dataset queries
 	FindDatasetsByStatus(ctx context.Context, tenantID, status string) ([]*Dataset, error)

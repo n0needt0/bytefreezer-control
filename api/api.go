@@ -101,6 +101,10 @@ func (api *API) NewRouter() *web.Service {
 	service.Delete("/api/v1/accounts/{accountId}", api.DeleteAccount())
 	service.Post("/api/v1/accounts/{accountId}/assume-admin", api.AssumeAccountAdmin())
 
+	// Flat list endpoints (for UI convenience) - MUST come before parametrized routes
+	service.Get("/api/v1/tenants", api.ListAllTenants())
+	service.Get("/api/v1/datasets", api.ListAllDatasets())
+
 	// Tenant management endpoints (scoped to account)
 	service.Get("/api/v1/accounts/{accountId}/tenants", api.ListTenants())
 	service.Get("/api/v1/accounts/{accountId}/tenants/{tenantId}", api.GetTenant())

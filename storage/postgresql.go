@@ -548,12 +548,12 @@ func (p *PostgreSQLStorage) CreateDataset(ctx context.Context, dataset *Dataset)
 	}
 
 	query := `
-		INSERT INTO control_datasets (id, tenant_id, name, description, active, status, created_at, updated_at, 
+		INSERT INTO control_datasets (id, tenant_id, name, display_name, description, active, status, created_at, updated_at,
 			config, records_processed, last_processed_at, error_count, last_error, processing_metrics)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`
 
 	_, err = p.db.ExecContext(ctx, query,
-		dataset.ID, dataset.TenantID, dataset.Name, dataset.Description, dataset.Active,
+		dataset.ID, dataset.TenantID, dataset.Name, dataset.DisplayName, dataset.Description, dataset.Active,
 		dataset.Status, dataset.CreatedAt, dataset.UpdatedAt, configJSON,
 		dataset.RecordsProcessed, dataset.LastProcessedAt, dataset.ErrorCount,
 		dataset.LastError, metricsJSON)
@@ -567,7 +567,7 @@ func (p *PostgreSQLStorage) CreateDataset(ctx context.Context, dataset *Dataset)
 
 func (p *PostgreSQLStorage) GetDataset(ctx context.Context, tenantID, datasetID string) (*Dataset, error) {
 	query := `
-		SELECT id, tenant_id, name, description, active, status, created_at, updated_at,
+		SELECT id, tenant_id, name, display_name, description, active, status, created_at, updated_at,
 			config, records_processed, last_processed_at, error_count, last_error, processing_metrics
 		FROM control_datasets WHERE tenant_id = $1 AND id = $2`
 
@@ -576,7 +576,7 @@ func (p *PostgreSQLStorage) GetDataset(ctx context.Context, tenantID, datasetID 
 	var lastError sql.NullString
 
 	err := p.db.QueryRowContext(ctx, query, tenantID, datasetID).Scan(
-		&dataset.ID, &dataset.TenantID, &dataset.Name, &dataset.Description,
+		&dataset.ID, &dataset.TenantID, &dataset.Name, &dataset.DisplayName, &dataset.Description,
 		&dataset.Active, &dataset.Status, &dataset.CreatedAt, &dataset.UpdatedAt,
 		&configJSON, &dataset.RecordsProcessed, &dataset.LastProcessedAt,
 		&dataset.ErrorCount, &lastError, &metricsJSON)
@@ -709,7 +709,7 @@ func (p *PostgreSQLStorage) DeleteDataset(ctx context.Context, tenantID, dataset
 
 func (p *PostgreSQLStorage) ListDatasets(ctx context.Context, tenantID string, opts ListOptions) (*ListResult[Dataset], error) {
 	query := `
-		SELECT id, tenant_id, name, description, active, status, created_at, updated_at,
+		SELECT id, tenant_id, name, display_name, description, active, status, created_at, updated_at,
 			config, records_processed, last_processed_at, error_count, last_error, processing_metrics
 		FROM control_datasets WHERE tenant_id = $1`
 	
@@ -744,7 +744,7 @@ func (p *PostgreSQLStorage) ListDatasets(ctx context.Context, tenantID string, o
 		var lastError sql.NullString
 
 		err := rows.Scan(
-			&dataset.ID, &dataset.TenantID, &dataset.Name, &dataset.Description,
+			&dataset.ID, &dataset.TenantID, &dataset.Name, &dataset.DisplayName, &dataset.Description,
 			&dataset.Active, &dataset.Status, &dataset.CreatedAt, &dataset.UpdatedAt,
 			&configJSON, &dataset.RecordsProcessed, &dataset.LastProcessedAt,
 			&dataset.ErrorCount, &lastError, &metricsJSON)
@@ -791,7 +791,7 @@ func (p *PostgreSQLStorage) ListDatasets(ctx context.Context, tenantID string, o
 // ListAllDatasets lists all datasets across all tenants (flat list for UI)
 func (p *PostgreSQLStorage) ListAllDatasets(ctx context.Context, opts ListOptions) (*ListResult[Dataset], error) {
 	query := `
-		SELECT id, tenant_id, name, description, active, status, created_at, updated_at,
+		SELECT id, tenant_id, name, display_name, description, active, status, created_at, updated_at,
 			config, records_processed, last_processed_at, error_count, last_error, processing_metrics
 		FROM control_datasets WHERE 1=1`
 
@@ -828,7 +828,7 @@ func (p *PostgreSQLStorage) ListAllDatasets(ctx context.Context, opts ListOption
 		var lastError sql.NullString
 
 		err := rows.Scan(
-			&dataset.ID, &dataset.TenantID, &dataset.Name, &dataset.Description,
+			&dataset.ID, &dataset.TenantID, &dataset.Name, &dataset.DisplayName, &dataset.Description,
 			&dataset.Active, &dataset.Status, &dataset.CreatedAt, &dataset.UpdatedAt,
 			&configJSON, &dataset.RecordsProcessed, &dataset.LastProcessedAt,
 			&dataset.ErrorCount, &lastError, &metricsJSON)
@@ -875,7 +875,7 @@ func (p *PostgreSQLStorage) ListAllDatasets(ctx context.Context, opts ListOption
 // Advanced dataset queries
 func (p *PostgreSQLStorage) FindDatasetsByStatus(ctx context.Context, tenantID, status string) ([]*Dataset, error) {
 	query := `
-		SELECT id, tenant_id, name, description, active, status, created_at, updated_at,
+		SELECT id, tenant_id, name, display_name, description, active, status, created_at, updated_at,
 			config, records_processed, last_processed_at, error_count, last_error, processing_metrics
 		FROM control_datasets WHERE tenant_id = $1 AND status = $2`
 
@@ -884,9 +884,9 @@ func (p *PostgreSQLStorage) FindDatasetsByStatus(ctx context.Context, tenantID, 
 
 func (p *PostgreSQLStorage) FindDatasetsBySourceType(ctx context.Context, tenantID, sourceType string) ([]*Dataset, error) {
 	query := `
-		SELECT id, tenant_id, name, description, active, status, created_at, updated_at,
+		SELECT id, tenant_id, name, display_name, description, active, status, created_at, updated_at,
 			config, records_processed, last_processed_at, error_count, last_error, processing_metrics
-		FROM control_datasets 
+		FROM control_datasets
 		WHERE tenant_id = $1 AND config->>'source'->>'type' = $2`
 
 	return p.queryDatasets(ctx, query, tenantID, sourceType)
@@ -905,7 +905,7 @@ func (p *PostgreSQLStorage) queryDatasets(ctx context.Context, query string, arg
 		var configJSON, metricsJSON []byte
 
 		err := rows.Scan(
-			&dataset.ID, &dataset.TenantID, &dataset.Name, &dataset.Description,
+			&dataset.ID, &dataset.TenantID, &dataset.Name, &dataset.DisplayName, &dataset.Description,
 			&dataset.Active, &dataset.Status, &dataset.CreatedAt, &dataset.UpdatedAt,
 			&configJSON, &dataset.RecordsProcessed, &dataset.LastProcessedAt,
 			&dataset.ErrorCount, &dataset.LastError, &metricsJSON)

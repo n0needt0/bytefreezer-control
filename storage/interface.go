@@ -66,6 +66,7 @@ type Dataset struct {
 	ID          string        `json:"id" db:"id"`
 	TenantID    string        `json:"tenant_id" db:"tenant_id"`
 	Name        string        `json:"name" db:"name"`
+	DisplayName string        `json:"display_name" db:"display_name"`
 	Description string        `json:"description" db:"description"`
 	Active      bool          `json:"active" db:"active"`
 	Status      string        `json:"status" db:"status"` // active, paused, error, processing

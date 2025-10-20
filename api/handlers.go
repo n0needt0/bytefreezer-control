@@ -1275,6 +1275,7 @@ func (api *API) CreateDataset() usecase.Interactor {
 			ID:          datasetID,
 			TenantID:    input.TenantID,
 			Name:        input.Name,
+			DisplayName: input.Name, // Default to same as name
 			Description: input.Description,
 			Active:      active,
 			Status:      status,

@@ -1,0 +1,195 @@
+package storage
+
+import (
+	"context"
+	"fmt"
+	"os"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/n0needt0/go-goodies/log"
+)
+
+// S3Cleaner handles S3 bucket cleanup operations
+type S3Cleaner struct {
+	client *s3.Client
+}
+
+// NewS3Cleaner creates a new S3 cleaner with credentials from dataset config
+func NewS3Cleaner(ctx context.Context, accessKey, secretKey, region, endpoint string) (*S3Cleaner, error) {
+	// If no explicit credentials provided, try environment or default config
+	var cfg aws.Config
+	var err error
+
+	if accessKey != "" && secretKey != "" {
+		// Use explicit credentials
+		cfg, err = config.LoadDefaultConfig(ctx,
+			config.WithRegion(region),
+			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+				accessKey,
+				secretKey,
+				"",
+			)),
+		)
+	} else {
+		// Use default credential chain (env vars, shared config, IAM role, etc.)
+		cfg, err = config.LoadDefaultConfig(ctx, config.WithRegion(region))
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	// Create S3 client
+	var s3Client *s3.Client
+	if endpoint != "" {
+		// Custom endpoint (e.g., MinIO, LocalStack)
+		s3Client = s3.NewFromConfig(cfg, func(o *s3.Options) {
+			o.BaseEndpoint = aws.String(endpoint)
+			o.UsePathStyle = true // Required for MinIO/LocalStack
+		})
+	} else {
+		s3Client = s3.NewFromConfig(cfg)
+	}
+
+	return &S3Cleaner{
+		client: s3Client,
+	}, nil
+}
+
+// DeletePrefix deletes all objects under a specific prefix in a bucket
+func (s *S3Cleaner) DeletePrefix(ctx context.Context, bucket, prefix string) error {
+	log.Infof("Starting S3 cleanup for bucket=%s prefix=%s", bucket, prefix)
+
+	// List all objects with the prefix
+	paginator := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(bucket),
+		Prefix: aws.String(prefix),
+	})
+
+	totalObjects := 0
+	deletedObjects := 0
+
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to list objects in bucket %s with prefix %s: %w", bucket, prefix, err)
+		}
+
+		if len(page.Contents) == 0 {
+			log.Debugf("No objects found in bucket=%s prefix=%s", bucket, prefix)
+			continue
+		}
+
+		totalObjects += len(page.Contents)
+
+		// Delete objects in batches (max 1000 per request)
+		batchSize := 1000
+		for i := 0; i < len(page.Contents); i += batchSize {
+			end := i + batchSize
+			if end > len(page.Contents) {
+				end = len(page.Contents)
+			}
+
+			batch := page.Contents[i:end]
+			objectIdentifiers := make([]types.ObjectIdentifier, 0, len(batch))
+			for _, obj := range batch {
+				objectIdentifiers = append(objectIdentifiers, types.ObjectIdentifier{
+					Key: obj.Key,
+				})
+			}
+
+			// Delete batch
+			_, err := s.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+				Bucket: aws.String(bucket),
+				Delete: &types.Delete{
+					Objects: objectIdentifiers,
+					Quiet:   aws.Bool(true),
+				},
+			})
+
+			if err != nil {
+				return fmt.Errorf("failed to delete batch of objects from bucket %s: %w", bucket, err)
+			}
+
+			deletedObjects += len(objectIdentifiers)
+			log.Debugf("Deleted batch of %d objects from bucket=%s prefix=%s", len(objectIdentifiers), bucket, prefix)
+		}
+	}
+
+	log.Infof("Completed S3 cleanup for bucket=%s prefix=%s: found %d objects, deleted %d objects",
+		bucket, prefix, totalObjects, deletedObjects)
+
+	return nil
+}
+
+// CleanupDatasetStorage deletes all S3 data for a dataset across all three storage layers
+func (s *S3Cleaner) CleanupDatasetStorage(ctx context.Context, bucket, tenantID, datasetID string) error {
+	// Define the three storage prefixes
+	prefixes := []struct {
+		name   string
+		prefix string
+	}{
+		{"raw intake", fmt.Sprintf("raw/%s/%s/", tenantID, datasetID)},
+		{"processed intermediate", fmt.Sprintf("processed/%s/%s/", tenantID, datasetID)},
+		{"parquet output", fmt.Sprintf("parquet/%s/%s/", tenantID, datasetID)},
+	}
+
+	// Track errors but continue with all deletions
+	var cleanupErrors []error
+
+	for _, p := range prefixes {
+		log.Infof("Cleaning up %s storage for dataset %s/%s", p.name, tenantID, datasetID)
+
+		if err := s.DeletePrefix(ctx, bucket, p.prefix); err != nil {
+			log.Errorf("Failed to cleanup %s storage: %v", p.name, err)
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("%s: %w", p.name, err))
+		} else {
+			log.Infof("Successfully cleaned up %s storage", p.name)
+		}
+	}
+
+	if len(cleanupErrors) > 0 {
+		return fmt.Errorf("S3 cleanup completed with %d errors: %v", len(cleanupErrors), cleanupErrors)
+	}
+
+	return nil
+}
+
+// GetS3ConfigFromDataset extracts S3 configuration from dataset config
+func GetS3ConfigFromDataset(dataset *Dataset) (bucket, region, endpoint, accessKey, secretKey string, err error) {
+	// Check destination config
+	if dataset.Config.Destination.Connection.Bucket != "" {
+		bucket = dataset.Config.Destination.Connection.Bucket
+	}
+
+	if dataset.Config.Destination.Connection.Region != "" {
+		region = dataset.Config.Destination.Connection.Region
+	} else {
+		// Default region if not specified
+		region = "us-east-1"
+	}
+
+	if dataset.Config.Destination.Connection.Endpoint != "" {
+		endpoint = dataset.Config.Destination.Connection.Endpoint
+	}
+
+	// Get credentials from dataset config or environment
+	if dataset.Config.Destination.Connection.Credentials.AccessKey != "" {
+		accessKey = dataset.Config.Destination.Connection.Credentials.AccessKey
+		secretKey = dataset.Config.Destination.Connection.Credentials.SecretKey
+	} else {
+		// Try environment variables
+		accessKey = os.Getenv("AWS_ACCESS_KEY_ID")
+		secretKey = os.Getenv("AWS_SECRET_ACCESS_KEY")
+	}
+
+	if bucket == "" {
+		return "", "", "", "", "", fmt.Errorf("S3 bucket not configured in dataset")
+	}
+
+	return bucket, region, endpoint, accessKey, secretKey, nil
+}

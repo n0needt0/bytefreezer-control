@@ -650,11 +650,49 @@ func (p *PostgreSQLStorage) UpdateDataset(ctx context.Context, dataset *Dataset)
 }
 
 func (p *PostgreSQLStorage) DeleteDataset(ctx context.Context, tenantID, datasetID string) error {
-	query := `DELETE FROM control_datasets WHERE tenant_id = $1 AND id = $2`
+	// Step 1: Get dataset to retrieve S3 configuration
+	dataset, err := p.GetDataset(ctx, tenantID, datasetID)
+	if err != nil {
+		return fmt.Errorf("failed to get dataset before deletion: %w", err)
+	}
 
+	// Step 2: Update status to "deleting" to prevent modifications during cleanup
+	dataset.Status = "deleting"
+	if err := p.UpdateDataset(ctx, dataset); err != nil {
+		return fmt.Errorf("failed to update dataset status to deleting: %w", err)
+	}
+
+	// Step 3: Clean up S3 storage across all three layers (intake, piper, packer)
+	bucket, region, endpoint, accessKey, secretKey, err := GetS3ConfigFromDataset(dataset)
+	if err != nil {
+		// Log warning but continue with database deletion
+		// This handles cases where S3 config is missing or dataset never had data
+		fmt.Printf("Warning: Could not extract S3 config for dataset %s/%s: %v\n", tenantID, datasetID, err)
+	} else {
+		// Create S3 cleaner
+		s3Cleaner, err := NewS3Cleaner(ctx, accessKey, secretKey, region, endpoint)
+		if err != nil {
+			return fmt.Errorf("failed to create S3 cleaner: %w", err)
+		}
+
+		// Perform S3 cleanup
+		if err := s3Cleaner.CleanupDatasetStorage(ctx, bucket, tenantID, datasetID); err != nil {
+			// S3 cleanup failed - this is critical, don't delete the database record
+			// Update status to error so user can retry
+			dataset.Status = "error"
+			dataset.LastError = fmt.Sprintf("S3 cleanup failed: %v", err)
+			if updateErr := p.UpdateDataset(ctx, dataset); updateErr != nil {
+				return fmt.Errorf("S3 cleanup failed and could not update dataset status: %w (original error: %v)", updateErr, err)
+			}
+			return fmt.Errorf("failed to cleanup S3 storage: %w", err)
+		}
+	}
+
+	// Step 4: Delete database record only after successful S3 cleanup
+	query := `DELETE FROM control_datasets WHERE tenant_id = $1 AND id = $2`
 	result, err := p.db.ExecContext(ctx, query, tenantID, datasetID)
 	if err != nil {
-		return fmt.Errorf("failed to delete dataset: %w", err)
+		return fmt.Errorf("failed to delete dataset from database: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
@@ -663,7 +701,7 @@ func (p *PostgreSQLStorage) DeleteDataset(ctx context.Context, tenantID, dataset
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("dataset not found: %s/%s", tenantID, datasetID)
+		return fmt.Errorf("dataset not found in database: %s/%s", tenantID, datasetID)
 	}
 
 	return nil

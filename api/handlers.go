@@ -1236,6 +1236,8 @@ func (api *API) CreateDataset() usecase.Interactor {
 		ID          string                `json:"id" required:"true"`
 		Name        string                `json:"name" required:"true"`
 		Description string                `json:"description"`
+		Active      *bool                 `json:"active"`
+		Status      string                `json:"status"`
 		Config      storage.DatasetConfig `json:"config"`
 	}
 
@@ -1252,13 +1254,24 @@ func (api *API) CreateDataset() usecase.Interactor {
 			return fmt.Errorf("invalid dataset ID: %w", err)
 		}
 
+		// Set default values for active and status if not provided
+		active := true
+		if input.Active != nil {
+			active = *input.Active
+		}
+
+		status := "active"
+		if input.Status != "" {
+			status = input.Status
+		}
+
 		dataset := &storage.Dataset{
 			ID:          input.ID,
 			TenantID:    input.TenantID,
 			Name:        input.Name,
 			Description: input.Description,
-			Active:      true,
-			Status:      "active",
+			Active:      active,
+			Status:      status,
 			Config:      input.Config,
 		}
 

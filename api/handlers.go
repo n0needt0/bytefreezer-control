@@ -1233,7 +1233,7 @@ func (api *API) GetDataset() usecase.Interactor {
 func (api *API) CreateDataset() usecase.Interactor {
 	type createDatasetInput struct {
 		TenantID    string                `path:"tenantId" required:"true"`
-		ID          string                `json:"id" required:"true"`
+		ID          string                `json:"id"`
 		Name        string                `json:"name" required:"true"`
 		Description string                `json:"description"`
 		Active      *bool                 `json:"active"`
@@ -1249,9 +1249,15 @@ func (api *API) CreateDataset() usecase.Interactor {
 			return fmt.Errorf("storage not initialized")
 		}
 
-		// Validate ID format
-		if err := ValidateID(input.ID); err != nil {
-			return fmt.Errorf("invalid dataset ID: %w", err)
+		// Auto-generate ID if not provided, otherwise validate it
+		datasetID := input.ID
+		if datasetID == "" {
+			datasetID = storage.GenerateShortID()
+		} else {
+			// Validate ID format if provided by client
+			if err := ValidateID(datasetID); err != nil {
+				return fmt.Errorf("invalid dataset ID: %w", err)
+			}
 		}
 
 		// Set default values for active and status if not provided
@@ -1266,7 +1272,7 @@ func (api *API) CreateDataset() usecase.Interactor {
 		}
 
 		dataset := &storage.Dataset{
-			ID:          input.ID,
+			ID:          datasetID,
 			TenantID:    input.TenantID,
 			Name:        input.Name,
 			Description: input.Description,

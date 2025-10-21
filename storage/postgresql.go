@@ -1124,14 +1124,20 @@ func (p *PostgreSQLStorage) ListAuditLogs(ctx context.Context, filter AuditLogFi
 	for rows.Next() {
 		var log AuditLog
 		var detailsJSON []byte
+		var resourceName sql.NullString
 		var errorMessage sql.NullString
 
 		err := rows.Scan(
 			&log.ID, &log.UserID, &log.AccountID, &log.Action, &log.ResourceType,
-			&log.ResourceID, &log.ResourceName, &detailsJSON, &log.IPAddress,
+			&log.ResourceID, &resourceName, &detailsJSON, &log.IPAddress,
 			&log.UserAgent, &log.Status, &errorMessage, &log.CreatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan audit log: %w", err)
+		}
+
+		// Handle NULL resource_name
+		if resourceName.Valid {
+			log.ResourceName = resourceName.String
 		}
 
 		// Unmarshal details JSON
@@ -1217,11 +1223,12 @@ func (p *PostgreSQLStorage) GetAuditLog(ctx context.Context, id int64) (*AuditLo
 
 	var log AuditLog
 	var detailsJSON []byte
+	var resourceName sql.NullString
 	var errorMessage sql.NullString
 
 	err := p.db.QueryRowContext(ctx, query, id).Scan(
 		&log.ID, &log.UserID, &log.AccountID, &log.Action, &log.ResourceType,
-		&log.ResourceID, &log.ResourceName, &detailsJSON, &log.IPAddress,
+		&log.ResourceID, &resourceName, &detailsJSON, &log.IPAddress,
 		&log.UserAgent, &log.Status, &errorMessage, &log.CreatedAt)
 
 	if err == sql.ErrNoRows {
@@ -1229,6 +1236,11 @@ func (p *PostgreSQLStorage) GetAuditLog(ctx context.Context, id int64) (*AuditLo
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get audit log: %w", err)
+	}
+
+	// Handle NULL resource_name
+	if resourceName.Valid {
+		log.ResourceName = resourceName.String
 	}
 
 	// Unmarshal details JSON

@@ -1306,6 +1306,7 @@ func (api *API) UpdateDataset() usecase.Interactor {
 		Name        string                 `json:"name"`
 		Description string                 `json:"description"`
 		Active      *bool                  `json:"active"`
+		Status      string                 `json:"status"`
 		Config      *storage.DatasetConfig `json:"config"`
 	}
 
@@ -1332,6 +1333,9 @@ func (api *API) UpdateDataset() usecase.Interactor {
 		}
 		if input.Active != nil {
 			dataset.Active = *input.Active
+		}
+		if input.Status != "" {
+			dataset.Status = input.Status
 		}
 		if input.Config != nil {
 			dataset.Config = *input.Config

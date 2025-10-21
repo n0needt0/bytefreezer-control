@@ -1360,8 +1360,9 @@ func (api *API) UpdateDataset() usecase.Interactor {
 // DeleteDataset deletes a dataset
 func (api *API) DeleteDataset() usecase.Interactor {
 	type deleteDatasetInput struct {
-		TenantID  string `path:"tenantId" required:"true"`
-		DatasetID string `path:"datasetId" required:"true"`
+		TenantID       string `path:"tenantId" required:"true"`
+		DatasetID      string `path:"datasetId" required:"true"`
+		SkipS3Cleanup  bool   `query:"skip_s3_cleanup"`
 	}
 
 	type deleteDatasetOutput struct {
@@ -1377,17 +1378,21 @@ func (api *API) DeleteDataset() usecase.Interactor {
 			return fmt.Errorf("storage not initialized")
 		}
 
-		if err := api.Services.Storage.DeleteDataset(ctx, input.TenantID, input.DatasetID); err != nil {
+		if err := api.Services.Storage.DeleteDataset(ctx, input.TenantID, input.DatasetID, input.SkipS3Cleanup); err != nil {
 			return fmt.Errorf("failed to delete dataset: %w", err)
 		}
 
 		output.Success = true
-		output.Message = fmt.Sprintf("Dataset %s deleted successfully", input.DatasetID)
+		if input.SkipS3Cleanup {
+			output.Message = fmt.Sprintf("Dataset %s configuration deleted successfully (S3 cleanup skipped)", input.DatasetID)
+		} else {
+			output.Message = fmt.Sprintf("Dataset %s deleted successfully", input.DatasetID)
+		}
 		return nil
 	})
 
 	u.SetTitle("Delete Dataset")
-	u.SetDescription("Deletes a dataset")
+	u.SetDescription("Deletes a dataset with optional S3 cleanup skip")
 	u.SetTags("datasets")
 	u.SetExpectedErrors(usecaseStatus.NotFound)
 

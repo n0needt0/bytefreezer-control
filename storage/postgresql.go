@@ -649,7 +649,7 @@ func (p *PostgreSQLStorage) UpdateDataset(ctx context.Context, dataset *Dataset)
 	return nil
 }
 
-func (p *PostgreSQLStorage) DeleteDataset(ctx context.Context, tenantID, datasetID string) error {
+func (p *PostgreSQLStorage) DeleteDataset(ctx context.Context, tenantID, datasetID string, skipS3Cleanup bool) error {
 	// Step 1: Get dataset to retrieve S3 configuration
 	dataset, err := p.GetDataset(ctx, tenantID, datasetID)
 	if err != nil {
@@ -663,14 +663,14 @@ func (p *PostgreSQLStorage) DeleteDataset(ctx context.Context, tenantID, dataset
 	}
 
 	// Step 3: Clean up S3 storage across all three layers (intake, piper, packer)
-	bucket, region, endpoint, accessKey, secretKey, err := GetS3ConfigFromDataset(dataset)
+	bucket, region, endpoint, accessKey, secretKey, useSSL, err := GetS3ConfigFromDataset(dataset)
 	if err != nil {
 		// Log warning but continue with database deletion
 		// This handles cases where S3 config is missing or dataset never had data
 		fmt.Printf("Warning: Could not extract S3 config for dataset %s/%s: %v\n", tenantID, datasetID, err)
 	} else {
-		// Create S3 cleaner
-		s3Cleaner, err := NewS3Cleaner(ctx, accessKey, secretKey, region, endpoint)
+		// Create S3 cleaner with proper endpoint URL
+		s3Cleaner, err := NewS3Cleaner(ctx, accessKey, secretKey, region, endpoint, useSSL)
 		if err != nil {
 			return fmt.Errorf("failed to create S3 cleaner: %w", err)
 		}

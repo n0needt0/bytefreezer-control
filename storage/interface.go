@@ -138,7 +138,7 @@ type Storage interface {
 	CreateDataset(ctx context.Context, dataset *Dataset) error
 	GetDataset(ctx context.Context, tenantID, datasetID string) (*Dataset, error)
 	UpdateDataset(ctx context.Context, dataset *Dataset) error
-	DeleteDataset(ctx context.Context, tenantID, datasetID string) error
+	DeleteDataset(ctx context.Context, tenantID, datasetID string, skipS3Cleanup bool) error
 	ListDatasets(ctx context.Context, tenantID string, opts ListOptions) (*ListResult[Dataset], error)
 	ListAllDatasets(ctx context.Context, opts ListOptions) (*ListResult[Dataset], error) // List all datasets across all tenants
 	

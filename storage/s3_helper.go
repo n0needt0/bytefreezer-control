@@ -19,7 +19,7 @@ type S3Cleaner struct {
 }
 
 // NewS3Cleaner creates a new S3 cleaner with credentials from dataset config
-func NewS3Cleaner(ctx context.Context, accessKey, secretKey, region, endpoint string) (*S3Cleaner, error) {
+func NewS3Cleaner(ctx context.Context, accessKey, secretKey, region, endpoint string, useSSL bool) (*S3Cleaner, error) {
 	// If no explicit credentials provided, try environment or default config
 	var cfg aws.Config
 	var err error
@@ -47,8 +47,17 @@ func NewS3Cleaner(ctx context.Context, accessKey, secretKey, region, endpoint st
 	var s3Client *s3.Client
 	if endpoint != "" {
 		// Custom endpoint (e.g., MinIO, LocalStack)
+		// Construct full endpoint URL with protocol
+		protocol := "http"
+		if useSSL {
+			protocol = "https"
+		}
+		fullEndpoint := fmt.Sprintf("%s://%s", protocol, endpoint)
+
+		log.Infof("Creating S3 client with custom endpoint: %s (useSSL=%v)", fullEndpoint, useSSL)
+
 		s3Client = s3.NewFromConfig(cfg, func(o *s3.Options) {
-			o.BaseEndpoint = aws.String(endpoint)
+			o.BaseEndpoint = aws.String(fullEndpoint)
 			o.UsePathStyle = true // Required for MinIO/LocalStack
 		})
 	} else {
@@ -126,16 +135,17 @@ func (s *S3Cleaner) DeletePrefix(ctx context.Context, bucket, prefix string) err
 	return nil
 }
 
-// CleanupDatasetStorage deletes all S3 data for a dataset across all three storage layers
+// CleanupDatasetStorage deletes S3 data for a dataset (intermediate/processing data only)
+// Final parquet output is NOT deleted as it belongs to the customer
 func (s *S3Cleaner) CleanupDatasetStorage(ctx context.Context, bucket, tenantID, datasetID string) error {
-	// Define the three storage prefixes
+	// Define the storage prefixes to delete (intermediate data only, NOT final output)
 	prefixes := []struct {
 		name   string
 		prefix string
 	}{
 		{"raw intake", fmt.Sprintf("raw/%s/%s/", tenantID, datasetID)},
 		{"processed intermediate", fmt.Sprintf("processed/%s/%s/", tenantID, datasetID)},
-		{"parquet output", fmt.Sprintf("parquet/%s/%s/", tenantID, datasetID)},
+		// NOTE: parquet output is NOT deleted - it belongs to the customer
 	}
 
 	// Track errors but continue with all deletions
@@ -156,11 +166,12 @@ func (s *S3Cleaner) CleanupDatasetStorage(ctx context.Context, bucket, tenantID,
 		return fmt.Errorf("S3 cleanup completed with %d errors: %v", len(cleanupErrors), cleanupErrors)
 	}
 
+	log.Infof("Dataset %s/%s cleanup complete. Final parquet output preserved for customer.", tenantID, datasetID)
 	return nil
 }
 
 // GetS3ConfigFromDataset extracts S3 configuration from dataset config
-func GetS3ConfigFromDataset(dataset *Dataset) (bucket, region, endpoint, accessKey, secretKey string, err error) {
+func GetS3ConfigFromDataset(dataset *Dataset) (bucket, region, endpoint, accessKey, secretKey string, useSSL bool, err error) {
 	// Check destination config
 	if dataset.Config.Destination.Connection.Bucket != "" {
 		bucket = dataset.Config.Destination.Connection.Bucket
@@ -177,6 +188,9 @@ func GetS3ConfigFromDataset(dataset *Dataset) (bucket, region, endpoint, accessK
 		endpoint = dataset.Config.Destination.Connection.Endpoint
 	}
 
+	// Get SSL flag (defaults to false for MinIO compatibility)
+	useSSL = dataset.Config.Destination.Connection.SSL
+
 	// Get credentials from dataset config or environment
 	if dataset.Config.Destination.Connection.Credentials.AccessKey != "" {
 		accessKey = dataset.Config.Destination.Connection.Credentials.AccessKey
@@ -188,8 +202,8 @@ func GetS3ConfigFromDataset(dataset *Dataset) (bucket, region, endpoint, accessK
 	}
 
 	if bucket == "" {
-		return "", "", "", "", "", fmt.Errorf("S3 bucket not configured in dataset")
+		return "", "", "", "", "", false, fmt.Errorf("S3 bucket not configured in dataset")
 	}
 
-	return bucket, region, endpoint, accessKey, secretKey, nil
+	return bucket, region, endpoint, accessKey, secretKey, useSSL, nil
 }

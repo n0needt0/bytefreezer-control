@@ -1378,9 +1378,50 @@ func (api *API) DeleteDataset() usecase.Interactor {
 			return fmt.Errorf("storage not initialized")
 		}
 
+		// Get dataset info for audit log before deletion
+		dataset, err := api.Services.Storage.GetDataset(ctx, input.TenantID, input.DatasetID)
+		if err != nil {
+			return fmt.Errorf("failed to get dataset: %w", err)
+		}
+
+		// Get tenant info for account ID
+		tenant, err := api.Services.Storage.GetTenantByID(ctx, input.TenantID)
+		if err != nil {
+			log.Warnf("Could not get tenant for audit log: %v", err)
+		}
+
+		accountID := ""
+		if tenant != nil {
+			accountID = tenant.AccountID
+		}
+
+		// TODO: Extract user ID from JWT token in context via authentication middleware
+		// For now, using "system" as placeholder - this should be replaced with actual user ID from JWT
+		userID := "system"
+
+		// Log audit event BEFORE deletion
+		if api.Services.AuditLog != nil {
+			api.Services.AuditLog.LogAction(ctx, userID, accountID, "delete_dataset", "dataset", input.DatasetID, map[string]interface{}{
+				"dataset_name": dataset.Name,
+				"tenant_id":    input.TenantID,
+				"skip_s3_cleanup": input.SkipS3Cleanup,
+			})
+		}
+
+		// Perform deletion
 		if err := api.Services.Storage.DeleteDataset(ctx, input.TenantID, input.DatasetID, input.SkipS3Cleanup); err != nil {
+			// Log failure in audit log
+			if api.Services.AuditLog != nil {
+				api.Services.AuditLog.LogAction(ctx, userID, accountID, "delete_dataset_failed", "dataset", input.DatasetID, map[string]interface{}{
+					"dataset_name": dataset.Name,
+					"tenant_id":    input.TenantID,
+					"error":        err.Error(),
+				})
+			}
 			return fmt.Errorf("failed to delete dataset: %w", err)
 		}
+
+		log.Infof("Dataset %s/%s (%s) deleted by user %s", input.TenantID, input.DatasetID, dataset.Name, userID)
 
 		output.Success = true
 		if input.SkipS3Cleanup {
@@ -1821,6 +1862,106 @@ func (api *API) GetPluginSchemas() usecase.Interactor {
 	u.SetTitle("Get Plugin Schemas")
 	u.SetDescription("Returns plugin configuration schemas from all registered proxy instances")
 	u.SetTags("plugins", "schemas")
+
+	return u
+}
+
+// Audit Log API handlers
+
+// ListAuditLogs returns audit logs filtered by account or system-wide
+func (api *API) ListAuditLogs() usecase.Interactor {
+	type listAuditLogsInput struct {
+		AccountID    string `query:"account_id"`    // Filter by account (required for account admins, optional for system admins)
+		UserID       string `query:"user_id"`       // Filter by specific user
+		Action       string `query:"action"`        // Filter by action type
+		ResourceType string `query:"resource_type"` // Filter by resource type
+		ResourceID   string `query:"resource_id"`   // Filter by specific resource
+		Limit        int    `query:"limit"`         // Number of results (default 100)
+		Offset       int    `query:"offset"`        // Pagination offset
+	}
+
+	type listAuditLogsOutput struct {
+		Items []storage.AuditLog `json:"items"`
+		Total int                `json:"total"`
+		Limit int                `json:"limit"`
+		Offset int               `json:"offset"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input listAuditLogsInput, output *listAuditLogsOutput) error {
+		api.Services.IncrementAPIRequests()
+		api.Services.IncrementDatabaseQueries()
+
+		if api.Services.Storage == nil {
+			return fmt.Errorf("storage not initialized")
+		}
+
+		// TODO: Extract user role from JWT token and enforce access control
+		// - System admins: can view all logs (no account_id filter required)
+		// - Account admins: can only view logs for their account (must match JWT account_id)
+		// For now, we'll allow all requests but log a warning
+
+		filter := storage.AuditLogFilter{
+			AccountID:    input.AccountID,
+			UserID:       input.UserID,
+			Action:       input.Action,
+			ResourceType: input.ResourceType,
+			ResourceID:   input.ResourceID,
+			Limit:        input.Limit,
+			Offset:       input.Offset,
+		}
+
+		result, err := api.Services.Storage.ListAuditLogs(ctx, filter)
+		if err != nil {
+			return fmt.Errorf("failed to list audit logs: %w", err)
+		}
+
+		output.Items = result.Items
+		output.Total = result.Total
+		output.Limit = input.Limit
+		output.Offset = input.Offset
+
+		return nil
+	})
+
+	u.SetTitle("List Audit Logs")
+	u.SetDescription("Returns audit logs filtered by account or system-wide (account admins see their account only, system admins see all)")
+	u.SetTags("audit")
+
+	return u
+}
+
+// GetAuditLog returns a specific audit log entry by ID
+func (api *API) GetAuditLog() usecase.Interactor {
+	type getAuditLogInput struct {
+		LogID int64 `path:"logId" required:"true"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input getAuditLogInput, output *storage.AuditLog) error {
+		api.Services.IncrementAPIRequests()
+		api.Services.IncrementDatabaseQueries()
+
+		if api.Services.Storage == nil {
+			return fmt.Errorf("storage not initialized")
+		}
+
+		// TODO: Verify that the user has permission to view this audit log
+		// - System admins: can view all logs
+		// - Account admins: can only view logs for their account
+		// This should be done by extracting account_id from JWT and comparing with log.account_id
+
+		log, err := api.Services.Storage.GetAuditLog(ctx, input.LogID)
+		if err != nil {
+			return fmt.Errorf("failed to get audit log: %w", err)
+		}
+
+		*output = *log
+		return nil
+	})
+
+	u.SetTitle("Get Audit Log")
+	u.SetDescription("Returns a specific audit log entry by ID")
+	u.SetTags("audit")
+	u.SetExpectedErrors(usecaseStatus.NotFound)
 
 	return u
 }

@@ -96,6 +96,36 @@ type DatasetMetrics struct {
 	CustomMetrics     map[string]interface{} `json:"custom_metrics,omitempty"`
 }
 
+// AuditLog represents an audit log entry for tracking user actions
+type AuditLog struct {
+	ID           int64                  `json:"id" db:"id"`
+	UserID       string                 `json:"user_id" db:"user_id"`
+	AccountID    string                 `json:"account_id" db:"account_id"`
+	Action       string                 `json:"action" db:"action"`
+	ResourceType string                 `json:"resource_type" db:"resource_type"`
+	ResourceID   string                 `json:"resource_id" db:"resource_id"`
+	ResourceName string                 `json:"resource_name" db:"resource_name"`
+	Details      map[string]interface{} `json:"details" db:"details"`
+	IPAddress    string                 `json:"ip_address" db:"ip_address"`
+	UserAgent    string                 `json:"user_agent" db:"user_agent"`
+	Status       string                 `json:"status" db:"status"`
+	ErrorMessage string                 `json:"error_message" db:"error_message"`
+	CreatedAt    time.Time              `json:"created_at" db:"created_at"`
+}
+
+// AuditLogFilter provides filtering options for audit log queries
+type AuditLogFilter struct {
+	AccountID    string    // Required for account admins, optional for system admins
+	UserID       string    // Filter by specific user
+	Action       string    // Filter by action type
+	ResourceType string    // Filter by resource type
+	ResourceID   string    // Filter by specific resource
+	StartDate    time.Time // Filter by date range
+	EndDate      time.Time
+	Limit        int       // Number of results to return (default 100)
+	Offset       int       // Pagination offset
+}
+
 // ListOptions provides pagination and filtering options
 type ListOptions struct {
 	Limit  int    `json:"limit"`
@@ -156,6 +186,10 @@ type Storage interface {
 	DeleteAPIKey(ctx context.Context, id string) error
 	ListAPIKeys(ctx context.Context, accountID string, opts ListOptions) (*ListResult[APIKey], error)
 	UpdateAPIKeyLastUsed(ctx context.Context, id string) error
+
+	// Audit Log operations
+	ListAuditLogs(ctx context.Context, filter AuditLogFilter) (*ListResult[AuditLog], error)
+	GetAuditLog(ctx context.Context, id int64) (*AuditLog, error)
 
 	// Proxy Instance Configuration operations
 	UpsertProxyConfig(ctx context.Context, config *ProxyInstanceConfig) error

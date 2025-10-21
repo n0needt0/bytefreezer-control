@@ -130,6 +130,10 @@ func (api *API) NewRouter() *web.Service {
 	service.Delete("/api/v1/users/{userId}", api.DeleteUser())
 	service.Post("/api/v1/users/{userId}/toggle-active", api.ToggleUserActive())
 
+	// Audit log endpoints
+	service.Get("/api/v1/audit-logs", api.ListAuditLogs())
+	service.Get("/api/v1/audit-logs/{logId}", api.GetAuditLog())
+
 	// Plugin schema endpoints
 	service.Get("/api/v1/plugins", api.GetPluginSchemas())
 

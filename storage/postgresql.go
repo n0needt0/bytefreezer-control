@@ -1039,3 +1039,209 @@ func (p *PostgreSQLStorage) ListAPIKeys(ctx context.Context, accountID string, o
 func (p *PostgreSQLStorage) UpdateAPIKeyLastUsed(ctx context.Context, id string) error {
 	return fmt.Errorf("API key last used update not implemented yet")
 }
+
+// Audit Log operations
+func (p *PostgreSQLStorage) ListAuditLogs(ctx context.Context, filter AuditLogFilter) (*ListResult[AuditLog], error) {
+	// Build query with filters
+	query := `
+		SELECT id, user_id, account_id, action, resource_type, resource_id, resource_name,
+			details, ip_address, user_agent, status, error_message, created_at
+		FROM control_audit_log
+		WHERE 1=1`
+
+	args := []interface{}{}
+	argIndex := 1
+
+	// Account ID filter (required for account admins, optional for system admins)
+	if filter.AccountID != "" {
+		query += fmt.Sprintf(" AND account_id = $%d", argIndex)
+		args = append(args, filter.AccountID)
+		argIndex++
+	}
+
+	// User ID filter
+	if filter.UserID != "" {
+		query += fmt.Sprintf(" AND user_id = $%d", argIndex)
+		args = append(args, filter.UserID)
+		argIndex++
+	}
+
+	// Action filter
+	if filter.Action != "" {
+		query += fmt.Sprintf(" AND action = $%d", argIndex)
+		args = append(args, filter.Action)
+		argIndex++
+	}
+
+	// Resource type filter
+	if filter.ResourceType != "" {
+		query += fmt.Sprintf(" AND resource_type = $%d", argIndex)
+		args = append(args, filter.ResourceType)
+		argIndex++
+	}
+
+	// Resource ID filter
+	if filter.ResourceID != "" {
+		query += fmt.Sprintf(" AND resource_id = $%d", argIndex)
+		args = append(args, filter.ResourceID)
+		argIndex++
+	}
+
+	// Date range filters
+	if !filter.StartDate.IsZero() {
+		query += fmt.Sprintf(" AND created_at >= $%d", argIndex)
+		args = append(args, filter.StartDate)
+		argIndex++
+	}
+
+	if !filter.EndDate.IsZero() {
+		query += fmt.Sprintf(" AND created_at <= $%d", argIndex)
+		args = append(args, filter.EndDate)
+		argIndex++
+	}
+
+	// Order by most recent first
+	query += " ORDER BY created_at DESC"
+
+	// Set default limit if not specified
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+
+	// Add pagination
+	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argIndex, argIndex+1)
+	args = append(args, limit, filter.Offset)
+
+	// Execute query
+	rows, err := p.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query audit logs: %w", err)
+	}
+	defer rows.Close()
+
+	var auditLogs []AuditLog
+	for rows.Next() {
+		var log AuditLog
+		var detailsJSON []byte
+		var errorMessage sql.NullString
+
+		err := rows.Scan(
+			&log.ID, &log.UserID, &log.AccountID, &log.Action, &log.ResourceType,
+			&log.ResourceID, &log.ResourceName, &detailsJSON, &log.IPAddress,
+			&log.UserAgent, &log.Status, &errorMessage, &log.CreatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan audit log: %w", err)
+		}
+
+		// Unmarshal details JSON
+		if len(detailsJSON) > 0 {
+			if err := json.Unmarshal(detailsJSON, &log.Details); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal audit log details: %w", err)
+			}
+		}
+
+		// Handle NULL error_message
+		if errorMessage.Valid {
+			log.ErrorMessage = errorMessage.String
+		}
+
+		auditLogs = append(auditLogs, log)
+	}
+
+	// Get total count (without pagination)
+	countQuery := `SELECT COUNT(*) FROM control_audit_log WHERE 1=1`
+	countArgs := []interface{}{}
+	countArgIndex := 1
+
+	if filter.AccountID != "" {
+		countQuery += fmt.Sprintf(" AND account_id = $%d", countArgIndex)
+		countArgs = append(countArgs, filter.AccountID)
+		countArgIndex++
+	}
+
+	if filter.UserID != "" {
+		countQuery += fmt.Sprintf(" AND user_id = $%d", countArgIndex)
+		countArgs = append(countArgs, filter.UserID)
+		countArgIndex++
+	}
+
+	if filter.Action != "" {
+		countQuery += fmt.Sprintf(" AND action = $%d", countArgIndex)
+		countArgs = append(countArgs, filter.Action)
+		countArgIndex++
+	}
+
+	if filter.ResourceType != "" {
+		countQuery += fmt.Sprintf(" AND resource_type = $%d", countArgIndex)
+		countArgs = append(countArgs, filter.ResourceType)
+		countArgIndex++
+	}
+
+	if filter.ResourceID != "" {
+		countQuery += fmt.Sprintf(" AND resource_id = $%d", countArgIndex)
+		countArgs = append(countArgs, filter.ResourceID)
+		countArgIndex++
+	}
+
+	if !filter.StartDate.IsZero() {
+		countQuery += fmt.Sprintf(" AND created_at >= $%d", countArgIndex)
+		countArgs = append(countArgs, filter.StartDate)
+		countArgIndex++
+	}
+
+	if !filter.EndDate.IsZero() {
+		countQuery += fmt.Sprintf(" AND created_at <= $%d", countArgIndex)
+		countArgs = append(countArgs, filter.EndDate)
+		countArgIndex++
+	}
+
+	var total int
+	err = p.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get audit log count: %w", err)
+	}
+
+	return &ListResult[AuditLog]{
+		Items: auditLogs,
+		Total: total,
+	}, nil
+}
+
+func (p *PostgreSQLStorage) GetAuditLog(ctx context.Context, id int64) (*AuditLog, error) {
+	query := `
+		SELECT id, user_id, account_id, action, resource_type, resource_id, resource_name,
+			details, ip_address, user_agent, status, error_message, created_at
+		FROM control_audit_log
+		WHERE id = $1`
+
+	var log AuditLog
+	var detailsJSON []byte
+	var errorMessage sql.NullString
+
+	err := p.db.QueryRowContext(ctx, query, id).Scan(
+		&log.ID, &log.UserID, &log.AccountID, &log.Action, &log.ResourceType,
+		&log.ResourceID, &log.ResourceName, &detailsJSON, &log.IPAddress,
+		&log.UserAgent, &log.Status, &errorMessage, &log.CreatedAt)
+
+	if err == sql.ErrNoRows {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get audit log: %w", err)
+	}
+
+	// Unmarshal details JSON
+	if len(detailsJSON) > 0 {
+		if err := json.Unmarshal(detailsJSON, &log.Details); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal audit log details: %w", err)
+		}
+	}
+
+	// Handle NULL error_message
+	if errorMessage.Valid {
+		log.ErrorMessage = errorMessage.String
+	}
+
+	return &log, nil
+}

@@ -180,38 +180,52 @@ func (s *S3Cleaner) CleanupDatasetStorage(ctx context.Context, packerBucket, ten
 }
 
 // GetS3ConfigFromDataset extracts S3 configuration from dataset config
+// Falls back to environment variables if dataset config is incomplete
 func GetS3ConfigFromDataset(dataset *Dataset) (bucket, region, endpoint, accessKey, secretKey string, useSSL bool, err error) {
 	// Check destination config
 	if dataset.Config.Destination.Connection.Bucket != "" {
 		bucket = dataset.Config.Destination.Connection.Bucket
 	}
 
+	// Region: dataset config > env var > default
 	if dataset.Config.Destination.Connection.Region != "" {
 		region = dataset.Config.Destination.Connection.Region
+	} else if envRegion := os.Getenv("AWS_REGION"); envRegion != "" {
+		region = envRegion
 	} else {
-		// Default region if not specified
 		region = "us-east-1"
 	}
 
+	// Endpoint: dataset config > env var
 	if dataset.Config.Destination.Connection.Endpoint != "" {
 		endpoint = dataset.Config.Destination.Connection.Endpoint
+	} else {
+		endpoint = os.Getenv("S3_ENDPOINT")
 	}
 
-	// Get SSL flag (defaults to false for MinIO compatibility)
-	useSSL = dataset.Config.Destination.Connection.SSL
+	// SSL flag: dataset config > env var > default false (for MinIO)
+	if dataset.Config.Destination.Connection.Credentials.AccessKey != "" {
+		useSSL = dataset.Config.Destination.Connection.SSL
+	} else if os.Getenv("S3_USE_SSL") == "true" {
+		useSSL = true
+	} else {
+		useSSL = false
+	}
 
-	// Get credentials from dataset config or environment
+	// Credentials: dataset config > environment variables
 	if dataset.Config.Destination.Connection.Credentials.AccessKey != "" {
 		accessKey = dataset.Config.Destination.Connection.Credentials.AccessKey
 		secretKey = dataset.Config.Destination.Connection.Credentials.SecretKey
 	} else {
-		// Try environment variables
 		accessKey = os.Getenv("AWS_ACCESS_KEY_ID")
 		secretKey = os.Getenv("AWS_SECRET_ACCESS_KEY")
 	}
 
+	// For cleanup, we use fixed bucket names (intake, piper, packer)
+	// So we don't require bucket to be set in dataset config
+	// Just use "packer" as default for the bucket parameter
 	if bucket == "" {
-		return "", "", "", "", "", false, fmt.Errorf("S3 bucket not configured in dataset")
+		bucket = "packer" // Default packer bucket name
 	}
 
 	return bucket, region, endpoint, accessKey, secretKey, useSSL, nil

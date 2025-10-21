@@ -8,7 +8,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/n0needt0/go-goodies/log"
 )
 
@@ -87,38 +86,25 @@ func (s *S3Cleaner) DeletePrefix(ctx context.Context, bucket, prefix string) err
 
 		totalObjects += len(page.Contents)
 
-		// Delete objects in batches (max 1000 per request)
-		batchSize := 1000
-		for i := 0; i < len(page.Contents); i += batchSize {
-			end := i + batchSize
-			if end > len(page.Contents) {
-				end = len(page.Contents)
-			}
-
-			batch := page.Contents[i:end]
-			objectIdentifiers := make([]types.ObjectIdentifier, 0, len(batch))
-			for _, obj := range batch {
-				objectIdentifiers = append(objectIdentifiers, types.ObjectIdentifier{
-					Key: obj.Key,
-				})
-			}
-
-			// Delete batch
-			_, err := s.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+		// Delete objects individually for MinIO compatibility
+		// MinIO requires Content-MD5 header for batch deletes, which AWS SDK v2 doesn't provide
+		// Individual deletes are more compatible and avoid the MissingContentMD5 error
+		for _, obj := range page.Contents {
+			_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
 				Bucket: aws.String(bucket),
-				Delete: &types.Delete{
-					Objects: objectIdentifiers,
-					Quiet:   aws.Bool(true),
-				},
+				Key:    obj.Key,
 			})
 
 			if err != nil {
-				return fmt.Errorf("failed to delete batch of objects from bucket %s: %w", bucket, err)
+				log.Warnf("Failed to delete object %s from bucket %s: %v", *obj.Key, bucket, err)
+				// Continue with other objects even if one fails
+				continue
 			}
 
-			deletedObjects += len(objectIdentifiers)
-			log.Debugf("Deleted batch of %d objects from bucket=%s prefix=%s", len(objectIdentifiers), bucket, prefix)
+			deletedObjects++
 		}
+
+		log.Debugf("Deleted %d objects from bucket=%s prefix=%s", len(page.Contents), bucket, prefix)
 	}
 
 	log.Infof("Completed S3 cleanup for bucket=%s prefix=%s: found %d objects, deleted %d objects",

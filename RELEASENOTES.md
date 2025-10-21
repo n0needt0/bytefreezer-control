@@ -1,5 +1,124 @@
 # ByteFreezer Control - Release Notes
 
+## v2.2.5: Audit Log NULL Handling Fix (2025-10-21)
+
+### Bug Fixes
+
+#### Fix Audit Log Display with NULL user_email
+- **NULL Handling**: Fixed audit log listing failure when `user_email` column contains NULL values
+  - Root cause: Older audit logs or system actions may have NULL user_email
+  - Error: "converting NULL to string is unsupported" when scanning user_email column
+  - Solution: Use `sql.NullString` for user_email field, just like resource_name and error_message
+  - Implementation: `storage/postgresql.go:1128-1143, 1233-1252`
+
+**Error Fixed**:
+```
+failed to scan audit log: sql: Scan error on column index 2, name "user_email":
+converting NULL to string is unsupported
+```
+
+**Before**: Audit log queries failed when encountering NULL user_email values
+**After**: Audit logs display correctly, with empty string for NULL user_email
+
+### Files Modified
+
+**Backend**:
+- `storage/postgresql.go` - Use sql.NullString for user_email in both ListAuditLogs and GetAuditLog
+
+### Technical Details
+
+**Fix Implementation**:
+```go
+// Before (Failed on NULL)
+err := rows.Scan(&log.ID, &log.UserID, &log.UserEmail, ...)
+
+// After (Handles NULL)
+var userEmail sql.NullString
+err := rows.Scan(&log.ID, &log.UserID, &userEmail, ...)
+if userEmail.Valid {
+    log.UserEmail = userEmail.String
+}
+```
+
+**When user_email is NULL**:
+- System-generated actions (automated cleanup, migrations, etc.)
+- Audit logs created before user_email column was added
+- Actions performed by background processes
+
+### Binary
+
+**Build Information**:
+- Binary: `bytefreezer-control`
+- Compiled successfully with all changes
+
+---
+
+## v2.2.4: MinIO S3 Delete Compatibility Fix (2025-10-21)
+
+### Bug Fixes
+
+#### Fix MinIO S3 Object Deletion (MissingContentMD5 Error)
+- **MinIO Compatibility**: Fixed dataset deletion failures with MinIO S3 storage
+  - Root cause: MinIO requires `Content-MD5` header for batch `DeleteObjects` operations
+  - AWS SDK v2 doesn't include this header by default for DeleteObjects
+  - Solution: Switch from batch deletes to individual `DeleteObject` calls for MinIO compatibility
+  - Implementation: `storage/s3_helper.go:90-108`
+
+**Error Fixed**:
+```
+operation error S3: DeleteObjects, https response error StatusCode: 400,
+api error MissingContentMD5: Missing required header for this request: Content-Md5
+```
+
+**Before**: Used batch DeleteObjects (up to 1000 objects per request) which failed on MinIO
+**After**: Use individual DeleteObject calls (one per object) which works with MinIO
+
+**Performance Note**: Individual deletes are slightly slower than batch deletes, but necessary for MinIO compatibility. For AWS S3, batch deletes would be more efficient, but MinIO is the primary deployment target.
+
+### Files Modified
+
+**Backend**:
+- `storage/s3_helper.go` - Changed from batch DeleteObjects to individual DeleteObject calls
+- `storage/s3_helper.go` - Removed unused `types` import
+
+### Technical Details
+
+**Old Implementation** (Batch Delete):
+```go
+_, err := s.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+    Bucket: aws.String(bucket),
+    Delete: &types.Delete{
+        Objects: objectIdentifiers,  // Up to 1000 objects
+        Quiet:   aws.Bool(true),
+    },
+})
+```
+
+**New Implementation** (Individual Delete):
+```go
+for _, obj := range page.Contents {
+    _, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+        Bucket: aws.String(bucket),
+        Key:    obj.Key,
+    })
+    // Continue on error instead of failing entire cleanup
+}
+```
+
+**Key Changes**:
+- Individual deletes work with MinIO (no Content-MD5 requirement)
+- Continues deleting remaining objects even if one fails
+- Logs warnings for failed deletes instead of failing entire operation
+- More resilient to partial failures
+
+### Binary
+
+**Build Information**:
+- Binary: `bytefreezer-control`
+- Compiled successfully with all changes
+
+---
+
 ## v2.2.3: Authentication Configuration Fixes (2025-10-21)
 
 ### Features

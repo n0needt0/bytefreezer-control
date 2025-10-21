@@ -1,5 +1,169 @@
 # ByteFreezer Control - Release Notes
 
+## v2.2.0: Proxy Configuration Management (2025-10-21)
+
+### Major Features
+
+#### 🎛️ Proxy Instance Configuration Management
+Comprehensive system for managing proxy instance configurations centrally.
+
+**Database Schema** (`migrations/004_proxy_configuration.sql`):
+- `proxy_instances` table: Stores current proxy configurations
+- `proxy_config_history` table: Maintains configuration audit trail
+- Automatic configuration versioning with each update
+- SHA256 hash-based change detection
+- Trigger-based automatic history archiving
+
+**API Endpoints** (`/api/v2/proxies/*`):
+- `GET /api/v2/proxies` - List all proxy instances (filterable by tenant)
+- `GET /api/v2/proxies/{instanceId}/config?tenant_id={tid}` - Get proxy configuration
+- `PUT /api/v2/proxies/{instanceId}/config` - Create/update proxy configuration
+- `POST /api/v2/proxies/{instanceId}/config/applied` - Mark configuration as applied
+- `GET /api/v2/proxies/{instanceId}/config/history?tenant_id={tid}` - Get configuration history
+- `DELETE /api/v2/proxies/{instanceId}?tenant_id={tid}` - Delete proxy instance
+
+#### 📋 Configuration Structure
+Each proxy instance configuration includes:
+- **Instance Identification**: instance_id (hostname), tenant_id, instance_api (hostname:port)
+- **Configuration Mode**: local-only, control-only, or hybrid
+- **Plugin Configurations**: Array of plugin configurations (type, name, config)
+- **Proxy Settings**: receiver, batching, spooling, housekeeping, otel, soc settings
+- **Versioning**: config_version (auto-incremented), config_hash (SHA256)
+- **Application Tracking**: config_applied, config_applied_at timestamps
+
+#### 🔄 Configuration Workflow
+
+1. **Create/Update Configuration**:
+   ```bash
+   PUT /api/v2/proxies/{instanceId}/config
+   {
+     "tenant_id": "my-tenant",
+     "instance_api": "proxy-01:8080",
+     "config_mode": "hybrid",
+     "plugin_configs": [...],
+     "proxy_settings": {...}
+   }
+   ```
+   - Auto-increments version
+   - Calculates SHA256 hash
+   - Resets `config_applied` to false
+
+2. **Proxy Polls Configuration**:
+   ```bash
+   GET /api/v2/proxies/{instanceId}/config?tenant_id={tid}
+   ```
+   - Returns current configuration with version and hash
+   - Proxy compares hash to detect changes
+
+3. **Proxy Reports Applied Status**:
+   ```bash
+   POST /api/v2/proxies/{instanceId}/config/applied
+   {
+     "tenant_id": "my-tenant",
+     "config_version": 3
+   }
+   ```
+   - Marks configuration as applied
+   - Updates timestamp
+
+4. **View Configuration History**:
+   ```bash
+   GET /api/v2/proxies/{instanceId}/config/history?tenant_id={tid}&limit=10
+   ```
+   - Returns last N configuration versions
+   - Includes change timestamps and version numbers
+
+#### 🛠️ Implementation Details
+
+**Storage Layer** (`storage/`):
+- `config_types.go`: ProxyInstanceConfig, ProxySettings, and component settings types
+- `interface.go`: Storage interface methods for proxy config operations
+- `postgresql_proxy_config.go`: PostgreSQL implementation with JSONB support
+
+**API Layer** (`api/`):
+- `api.go`: Route definitions for proxy config endpoints
+- `proxy_config_handlers.go`: HTTP handlers using swaggest/usecase pattern
+
+**Database Functions** (SQL):
+- `upsert_proxy_config()`: Create or update with automatic versioning
+- `mark_proxy_config_applied()`: Update application status
+- `get_proxy_config()`: Retrieve current configuration
+- `cleanup_old_proxy_config_history()`: Maintain history retention (90 days, keep last 10)
+
+#### 📊 Configuration History & Audit Trail
+- All configuration changes automatically archived
+- Triggered on UPDATE when plugin_configs or proxy_settings change
+- Stores: version, configs, hash, changed_by, change_reason, timestamp
+- Cleanup policy: Keep last 10 versions per instance, or 90 days, whichever is more recent
+
+#### 🔐 Security & Validation
+- SHA256 hash verification for change detection
+- Version-based concurrency control
+- Tenant isolation in all queries
+- Configuration mode validation (local-only, control-only, hybrid)
+- Instance-tenant uniqueness constraints
+
+#### 🎯 Use Cases
+
+**Centralized Management**:
+- Manage all proxy configurations from control UI/API
+- Update configurations without proxy restarts
+- Roll back to previous configurations using history
+
+**Multi-Instance Coordination**:
+- Consistent configurations across proxy fleet
+- Per-instance customization when needed
+- Track which instances have applied latest config
+
+**Operational Visibility**:
+- See current vs. applied configuration
+- Configuration change audit trail
+- Identify instances with outdated configurations
+
+### Database Schema
+```sql
+proxy_instances (
+    id SERIAL PRIMARY KEY,
+    instance_id VARCHAR(255),
+    tenant_id VARCHAR(255),
+    instance_api VARCHAR(255),
+    config_mode VARCHAR(50),
+    plugin_configs JSONB,
+    proxy_settings JSONB,
+    config_version INTEGER,
+    config_applied BOOLEAN,
+    config_applied_at TIMESTAMP,
+    config_hash VARCHAR(64),
+    active BOOLEAN,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP,
+    UNIQUE(instance_id, tenant_id)
+)
+```
+
+### Files Added/Modified
+
+**New Files**:
+- `migrations/004_proxy_configuration.sql`
+- `storage/postgresql_proxy_config.go`
+- `api/proxy_config_handlers.go`
+
+**Modified Files**:
+- `storage/config_types.go` - Added ProxyInstanceConfig and related types
+- `storage/interface.go` - Added proxy config interface methods
+- `api/api.go` - Added proxy config routes
+
+### Integration with Proxy
+This control-side implementation works with bytefreezer-proxy v4.0.0 which includes:
+- Configuration polling service
+- Dynamic plugin reload
+- Local configuration caching
+- Port conflict resolution
+
+See bytefreezer-proxy RELEASENOTES.md for proxy-side details.
+
+---
+
 ## Phase 2.1: Health Status & Consistency (2025-10-11)
 
 ### Bug Fixes

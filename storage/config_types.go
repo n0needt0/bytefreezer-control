@@ -312,6 +312,106 @@ type TransformRule struct {
 	Enabled     bool                   `json:"enabled"`
 }
 
+// ProxyInstanceConfig represents the full configuration for a proxy instance
+type ProxyInstanceConfig struct {
+	InstanceID      string                   `json:"instance_id"`       // hostname
+	TenantID        string                   `json:"tenant_id"`         // associated tenant
+	InstanceAPI     string                   `json:"instance_api"`      // hostname:port
+	ConfigMode      string                   `json:"config_mode"`       // local-only, control-only, hybrid
+	PluginConfigs   []map[string]interface{} `json:"plugin_configs"`    // Array of plugin configurations
+	ProxySettings   ProxySettings            `json:"proxy_settings"`    // Proxy-level settings
+	ConfigVersion   int                      `json:"config_version"`    // Version number
+	ConfigApplied   bool                     `json:"config_applied"`    // Whether proxy has applied this config
+	ConfigAppliedAt *time.Time               `json:"config_applied_at"` // When proxy last applied config
+	ConfigHash      string                   `json:"config_hash"`       // SHA256 hash for change detection
+	Active          bool                     `json:"active"`            // Whether instance is active
+	CreatedAt       time.Time                `json:"created_at"`
+	UpdatedAt       time.Time                `json:"updated_at"`
+}
+
+// ProxySettings represents proxy-level configuration settings
+type ProxySettings struct {
+	Receiver     ReceiverSettings     `json:"receiver,omitempty"`
+	Batching     BatchingSettings     `json:"batching,omitempty"`
+	Spooling     SpoolingSettings     `json:"spooling,omitempty"`
+	Housekeeping HousekeepingSettings `json:"housekeeping,omitempty"`
+	Otel         OtelSettings         `json:"otel,omitempty"`
+	SOC          SOCSettings          `json:"soc,omitempty"`
+	Custom       map[string]interface{} `json:"custom,omitempty"`
+}
+
+// ReceiverSettings represents receiver configuration
+type ReceiverSettings struct {
+	BaseURL            string `json:"base_url,omitempty"`
+	TimeoutSeconds     int    `json:"timeout_seconds,omitempty"`
+	UploadWorkerCount  int    `json:"upload_worker_count,omitempty"`
+	MaxIdleConns       int    `json:"max_idle_conns,omitempty"`
+	MaxConnsPerHost    int    `json:"max_conns_per_host,omitempty"`
+}
+
+// BatchingSettings represents batching configuration
+type BatchingSettings struct {
+	Enabled            bool  `json:"enabled"`
+	MaxLines           int   `json:"max_lines,omitempty"`
+	MaxBytes           int64 `json:"max_bytes,omitempty"`
+	TimeoutSeconds     int   `json:"timeout_seconds,omitempty"`
+	CompressionEnabled bool  `json:"compression_enabled"`
+	CompressionLevel   int   `json:"compression_level,omitempty"`
+}
+
+// SpoolingSettings represents spooling configuration
+type SpoolingSettings struct {
+	Enabled                       bool   `json:"enabled"`
+	Directory                     string `json:"directory,omitempty"`
+	MaxSizeBytes                  int64  `json:"max_size_bytes,omitempty"`
+	RetryAttempts                 int    `json:"retry_attempts,omitempty"`
+	RetryIntervalSeconds          int    `json:"retry_interval_seconds,omitempty"`
+	CleanupIntervalSeconds        int    `json:"cleanup_interval_seconds,omitempty"`
+	QueueProcessingIntervalSeconds int    `json:"queue_processing_interval_seconds,omitempty"`
+	Organization                  string `json:"organization,omitempty"`
+	PerTenantLimits              bool   `json:"per_tenant_limits"`
+	MaxFilesPerDataset           int    `json:"max_files_per_dataset,omitempty"`
+	MaxAgeDays                   int    `json:"max_age_days,omitempty"`
+}
+
+// HousekeepingSettings represents housekeeping configuration
+type HousekeepingSettings struct {
+	Enabled         bool `json:"enabled"`
+	IntervalSeconds int  `json:"interval_seconds,omitempty"`
+}
+
+// OtelSettings represents OpenTelemetry configuration
+type OtelSettings struct {
+	Enabled               bool   `json:"enabled"`
+	Endpoint              string `json:"endpoint,omitempty"`
+	ServiceName           string `json:"service_name,omitempty"`
+	ScrapeIntervalSeconds int    `json:"scrape_interval_seconds,omitempty"`
+	PrometheusMode        bool   `json:"prometheus_mode"`
+	MetricsPort           int    `json:"metrics_port,omitempty"`
+	MetricsHost           string `json:"metrics_host,omitempty"`
+}
+
+// SOCSettings represents SOC alert configuration
+type SOCSettings struct {
+	Enabled  bool   `json:"enabled"`
+	Endpoint string `json:"endpoint,omitempty"`
+	Timeout  int    `json:"timeout,omitempty"`
+}
+
+// ProxyConfigHistory represents a historical proxy configuration record
+type ProxyConfigHistory struct {
+	ID            int                      `json:"id"`
+	InstanceID    string                   `json:"instance_id"`
+	TenantID      string                   `json:"tenant_id"`
+	ConfigVersion int                      `json:"config_version"`
+	PluginConfigs []map[string]interface{} `json:"plugin_configs"`
+	ProxySettings ProxySettings            `json:"proxy_settings"`
+	ConfigHash    string                   `json:"config_hash"`
+	ChangedBy     string                   `json:"changed_by,omitempty"`
+	ChangeReason  string                   `json:"change_reason,omitempty"`
+	Timestamp     time.Time                `json:"timestamp"`
+}
+
 // Helper functions for default configurations
 
 // GetDefaultAccountConfig returns sensible default configuration for new accounts
@@ -497,4 +597,49 @@ func MergeTenantWithAccountConfig(account *Account, tenant *Tenant) *Tenant {
 	}
 
 	return &merged
+}
+
+// GetDefaultProxySettings returns sensible default proxy settings
+func GetDefaultProxySettings() ProxySettings {
+	return ProxySettings{
+		Receiver: ReceiverSettings{
+			TimeoutSeconds:    30,
+			UploadWorkerCount: 5,
+			MaxIdleConns:      10,
+			MaxConnsPerHost:   6,
+		},
+		Batching: BatchingSettings{
+			Enabled:            true,
+			MaxLines:           10000,
+			MaxBytes:           1048576, // 1MB
+			TimeoutSeconds:     30,
+			CompressionEnabled: true,
+			CompressionLevel:   6,
+		},
+		Spooling: SpoolingSettings{
+			Enabled:                       true,
+			Directory:                     "/var/spool/bytefreezer-proxy",
+			MaxSizeBytes:                  1073741824, // 1GB
+			RetryAttempts:                 5,
+			RetryIntervalSeconds:          60,
+			CleanupIntervalSeconds:        300,
+			QueueProcessingIntervalSeconds: 30,
+			Organization:                  "tenant_dataset",
+			PerTenantLimits:              false,
+			MaxFilesPerDataset:           0,
+			MaxAgeDays:                   0,
+		},
+		Housekeeping: HousekeepingSettings{
+			Enabled:         true,
+			IntervalSeconds: 300,
+		},
+		Otel: OtelSettings{
+			Enabled:        false,
+			PrometheusMode: false,
+		},
+		SOC: SOCSettings{
+			Enabled: false,
+		},
+		Custom: make(map[string]interface{}),
+	}
 }

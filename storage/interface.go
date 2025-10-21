@@ -157,6 +157,15 @@ type Storage interface {
 	ListAPIKeys(ctx context.Context, accountID string, opts ListOptions) (*ListResult[APIKey], error)
 	UpdateAPIKeyLastUsed(ctx context.Context, id string) error
 
+	// Proxy Instance Configuration operations
+	UpsertProxyConfig(ctx context.Context, config *ProxyInstanceConfig) error
+	GetProxyConfig(ctx context.Context, instanceID, tenantID string) (*ProxyInstanceConfig, error)
+	ListProxyConfigs(ctx context.Context, tenantID string) ([]*ProxyInstanceConfig, error)
+	ListAllProxyConfigs(ctx context.Context) ([]*ProxyInstanceConfig, error)
+	DeleteProxyConfig(ctx context.Context, instanceID, tenantID string) error
+	MarkProxyConfigApplied(ctx context.Context, instanceID, tenantID string, configVersion int) error
+	GetProxyConfigHistory(ctx context.Context, instanceID, tenantID string, limit int) ([]*ProxyConfigHistory, error)
+
 	// Utility operations
 	HealthCheck(ctx context.Context) error
 	Migrate(ctx context.Context) error

@@ -133,6 +133,14 @@ func (api *API) NewRouter() *web.Service {
 	// Plugin schema endpoints
 	service.Get("/api/v1/plugins", api.GetPluginSchemas())
 
+	// Proxy configuration management endpoints (v2)
+	service.Get("/api/v2/proxies", api.ListProxyInstances())
+	service.Get("/api/v2/proxies/{instanceId}/config", api.GetProxyConfig())
+	service.Put("/api/v2/proxies/{instanceId}/config", api.UpsertProxyConfig())
+	service.Post("/api/v2/proxies/{instanceId}/config/applied", api.MarkProxyConfigApplied())
+	service.Get("/api/v2/proxies/{instanceId}/config/history", api.GetProxyConfigHistory())
+	service.Delete("/api/v2/proxies/{instanceId}", api.DeleteProxyInstance())
+
 	// API documentation
 	service.Docs("/v1/docs", swgui.New)
 

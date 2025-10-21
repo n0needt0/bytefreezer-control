@@ -135,30 +135,39 @@ func (s *S3Cleaner) DeletePrefix(ctx context.Context, bucket, prefix string) err
 	return nil
 }
 
-// CleanupDatasetStorage deletes S3 data for a dataset (intermediate/processing data only)
-// Final parquet output is NOT deleted as it belongs to the customer
-func (s *S3Cleaner) CleanupDatasetStorage(ctx context.Context, bucket, tenantID, datasetID string) error {
-	// Define the storage prefixes to delete (intermediate data only, NOT final output)
-	prefixes := []struct {
+// CleanupDatasetStorage deletes intermediate S3 data for a dataset
+// ONLY deletes intake and piper data - NEVER deletes packer output (customer data)
+//
+// ByteFreezer uses separate S3 buckets for each stage:
+// - intake bucket: Raw data from bytefreezer-receiver (DELETED)
+// - piper bucket: Processed data from bytefreezer-piper (DELETED)
+// - packer bucket: Final parquet output (PRESERVED - customer data)
+//
+// The dataset configuration remains in the database for re-use
+func (s *S3Cleaner) CleanupDatasetStorage(ctx context.Context, packerBucket, tenantID, datasetID string) error {
+	// Define the buckets and paths to delete (ONLY intermediate data, NOT final output)
+	// Note: We use the same credentials but different bucket names
+	cleanupTargets := []struct {
 		name   string
+		bucket string
 		prefix string
 	}{
-		{"raw intake", fmt.Sprintf("raw/%s/%s/", tenantID, datasetID)},
-		{"processed intermediate", fmt.Sprintf("processed/%s/%s/", tenantID, datasetID)},
-		// NOTE: parquet output is NOT deleted - it belongs to the customer
+		{"intake", "intake", fmt.Sprintf("%s/%s/", tenantID, datasetID)},
+		{"piper", "piper", fmt.Sprintf("%s/%s/", tenantID, datasetID)},
+		// NOTE: packer output is NEVER deleted - it belongs to the customer
 	}
 
 	// Track errors but continue with all deletions
 	var cleanupErrors []error
 
-	for _, p := range prefixes {
-		log.Infof("Cleaning up %s storage for dataset %s/%s", p.name, tenantID, datasetID)
+	for _, target := range cleanupTargets {
+		log.Infof("Cleaning up %s bucket for dataset %s/%s", target.name, tenantID, datasetID)
 
-		if err := s.DeletePrefix(ctx, bucket, p.prefix); err != nil {
-			log.Errorf("Failed to cleanup %s storage: %v", p.name, err)
-			cleanupErrors = append(cleanupErrors, fmt.Errorf("%s: %w", p.name, err))
+		if err := s.DeletePrefix(ctx, target.bucket, target.prefix); err != nil {
+			log.Errorf("Failed to cleanup %s bucket: %v", target.name, err)
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("%s bucket: %w", target.name, err))
 		} else {
-			log.Infof("Successfully cleaned up %s storage", p.name)
+			log.Infof("Successfully cleaned up %s bucket", target.name)
 		}
 	}
 
@@ -166,7 +175,7 @@ func (s *S3Cleaner) CleanupDatasetStorage(ctx context.Context, bucket, tenantID,
 		return fmt.Errorf("S3 cleanup completed with %d errors: %v", len(cleanupErrors), cleanupErrors)
 	}
 
-	log.Infof("Dataset %s/%s cleanup complete. Final parquet output preserved for customer.", tenantID, datasetID)
+	log.Infof("Dataset %s/%s S3 cleanup complete. Deleted intake and piper data. Preserved packer output (bucket=%s) for customer.", tenantID, datasetID, packerBucket)
 	return nil
 }
 

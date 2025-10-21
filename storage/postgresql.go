@@ -663,20 +663,21 @@ func (p *PostgreSQLStorage) DeleteDataset(ctx context.Context, tenantID, dataset
 	}
 
 	// Step 3: Clean up S3 storage across all three layers (intake, piper, packer)
-	bucket, region, endpoint, accessKey, secretKey, useSSL, err := GetS3ConfigFromDataset(dataset)
-	if err != nil {
-		// Log warning but continue with database deletion
-		// This handles cases where S3 config is missing or dataset never had data
-		fmt.Printf("Warning: Could not extract S3 config for dataset %s/%s: %v\n", tenantID, datasetID, err)
-	} else {
-		// Create S3 cleaner with proper endpoint URL
-		s3Cleaner, err := NewS3Cleaner(ctx, accessKey, secretKey, region, endpoint, useSSL)
+	// Use S3 configuration from control service config instead of dataset config
+	if !skipS3Cleanup && p.config.S3.Enabled {
+		// Create S3 cleaner with control service S3 config
+		s3Cleaner, err := NewS3Cleaner(ctx,
+			p.config.S3.AccessKey,
+			p.config.S3.SecretKey,
+			p.config.S3.Region,
+			p.config.S3.Endpoint,
+			p.config.S3.UseSSL)
 		if err != nil {
 			return fmt.Errorf("failed to create S3 cleaner: %w", err)
 		}
 
-		// Perform S3 cleanup
-		if err := s3Cleaner.CleanupDatasetStorage(ctx, bucket, tenantID, datasetID); err != nil {
+		// Perform S3 cleanup using configured bucket names
+		if err := s3Cleaner.CleanupDatasetStorage(ctx, p.config.S3.IntakeBucket, p.config.S3.PiperBucket, tenantID, datasetID); err != nil {
 			// S3 cleanup failed - this is critical, don't delete the database record
 			// Update status to error so user can retry
 			dataset.Status = "error"
@@ -1044,7 +1045,7 @@ func (p *PostgreSQLStorage) UpdateAPIKeyLastUsed(ctx context.Context, id string)
 func (p *PostgreSQLStorage) ListAuditLogs(ctx context.Context, filter AuditLogFilter) (*ListResult[AuditLog], error) {
 	// Build query with filters
 	query := `
-		SELECT id, user_id, account_id, action, resource_type, resource_id, resource_name,
+		SELECT id, user_id, user_email, account_id, action, resource_type, resource_id, resource_name,
 			details, ip_address, user_agent, status, error_message, created_at
 		FROM control_audit_log
 		WHERE 1=1`
@@ -1128,7 +1129,7 @@ func (p *PostgreSQLStorage) ListAuditLogs(ctx context.Context, filter AuditLogFi
 		var errorMessage sql.NullString
 
 		err := rows.Scan(
-			&log.ID, &log.UserID, &log.AccountID, &log.Action, &log.ResourceType,
+			&log.ID, &log.UserID, &log.UserEmail, &log.AccountID, &log.Action, &log.ResourceType,
 			&log.ResourceID, &resourceName, &detailsJSON, &log.IPAddress,
 			&log.UserAgent, &log.Status, &errorMessage, &log.CreatedAt)
 		if err != nil {
@@ -1216,7 +1217,7 @@ func (p *PostgreSQLStorage) ListAuditLogs(ctx context.Context, filter AuditLogFi
 
 func (p *PostgreSQLStorage) GetAuditLog(ctx context.Context, id int64) (*AuditLog, error) {
 	query := `
-		SELECT id, user_id, account_id, action, resource_type, resource_id, resource_name,
+		SELECT id, user_id, user_email, account_id, action, resource_type, resource_id, resource_name,
 			details, ip_address, user_agent, status, error_message, created_at
 		FROM control_audit_log
 		WHERE id = $1`
@@ -1227,7 +1228,7 @@ func (p *PostgreSQLStorage) GetAuditLog(ctx context.Context, id int64) (*AuditLo
 	var errorMessage sql.NullString
 
 	err := p.db.QueryRowContext(ctx, query, id).Scan(
-		&log.ID, &log.UserID, &log.AccountID, &log.Action, &log.ResourceType,
+		&log.ID, &log.UserID, &log.UserEmail, &log.AccountID, &log.Action, &log.ResourceType,
 		&log.ResourceID, &resourceName, &detailsJSON, &log.IPAddress,
 		&log.UserAgent, &log.Status, &errorMessage, &log.CreatedAt)
 

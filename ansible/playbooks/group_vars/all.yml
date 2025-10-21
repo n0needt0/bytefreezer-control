@@ -56,7 +56,18 @@ config:
     ssl_mode: "disable"
     max_connections: 25
     max_idle_connections: 5
-  
+
+  # S3 configuration for dataset cleanup operations
+  s3:
+    enabled: true
+    intake_bucket: "intake"
+    piper_bucket: "piper"
+    region: "us-east-1"
+    endpoint: "192.168.86.125:9000"
+    access_key: "AKIAQNXBAHUKIMJP26P6"
+    secret_key: "SECRET_KEY_AKIAQNXBAHUKIMJP26P6"
+    use_ssl: false
+
   # OpenTelemetry configuration
   otel:
     enabled: true
@@ -71,12 +82,11 @@ config:
     interval_seconds: 300  # 5 minutes
   
   # Authentication and authorization
+  # Note: Admin roles (system_admin, account_admin, account_readonly) are managed in the database (control_users.role)
   auth:
     enabled: false  # Disabled for easier browser testing
     jwt_secret: "your-jwt-secret-key-here"
     token_expiry_hours: 24
-    admin_users:
-      - "admin@company.com"
 
   # Rate limiting
   rate_limit:

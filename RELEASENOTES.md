@@ -1,5 +1,210 @@
 # ByteFreezer Control - Release Notes
 
+## v2.2.3: Authentication Configuration Fixes (2025-10-21)
+
+### Features
+
+#### Token Expiry Hours Configuration Actually Works
+- **Configurable Token Expiry**: Fixed `auth.token_expiry_hours` configuration to actually control JWT token expiration
+  - Previously, tokens were hardcoded to 1 hour regardless of config setting
+  - Now tokens expire based on `auth.token_expiry_hours` setting (default: 24 hours)
+  - Implementation: `services/auth.go:17-20, 72-82, 147-150`
+  - Service initialization logs token expiry setting: `services/services.go:147-148`
+  - Added validation: defaults to 1 hour if invalid value provided
+
+**Before**: Tokens always expired in 1 hour (hardcoded)
+**After**: Tokens expire based on config.yaml `auth.token_expiry_hours` setting
+
+**Configuration** (`config.yaml:85-88`):
+```yaml
+auth:
+  enabled: false
+  jwt_secret: "your-jwt-secret-key-here"
+  token_expiry_hours: 24  # Now actually used!
+```
+
+#### Password Reset Now Uses Database Roles
+- **Database-Driven Admin Check**: Password reset now checks database user roles instead of config file
+  - Previously, password reset checked `auth.admin_users` list in config file
+  - Now queries database for users with `system_admin` or `account_admin` roles
+  - Eliminates inconsistency between config-based admin list and database roles
+  - Implementation: `api/handlers.go:1118-1131`
+
+**Before**: Checked `auth.admin_users` array in config.yaml
+**After**: Queries `control_users` table for `role IN ('system_admin', 'account_admin')`
+
+**Note**: The `auth.admin_users` config setting is now deprecated but still present in config for backward compatibility. It is no longer used functionally.
+
+### Bug Fixes
+
+#### Fix Token Expiry Hours Inconsistency
+- **Configuration Not Used**: Fixed bug where `token_expiry_hours` config was read but never applied
+  - Root cause: AuthService struct didn't store or use the config value
+  - Solution: Added `tokenExpiryHours` field to AuthService and updated token generation
+  - Tokens now properly expire based on configuration instead of hardcoded 1 hour
+  - Default to 1 hour if invalid value provided (≤0)
+
+#### Fix Admin Users Config vs Database Inconsistency
+- **Redundant Admin List**: Fixed password reset to use database roles instead of config list
+  - Root cause: Password reset checked config file while actual roles are in database
+  - Solution: Query database for user roles instead of checking config array
+  - Aligns password reset with the database-driven role system
+  - Reduces configuration complexity and potential inconsistencies
+
+### Files Modified
+
+**Backend**:
+- `services/auth.go` - Added tokenExpiryHours field, updated NewAuthService, updated GenerateTokenPair to use configured expiry
+- `services/services.go` - Pass token_expiry_hours from config to AuthService initialization
+- `api/handlers.go` - Updated RequestPasswordReset to check database roles instead of config admin_users
+
+**Configuration Files**:
+- `config.yaml` - Removed deprecated admin_users array, added comment about database-driven roles
+- `ansible/playbooks/templates/config.yaml.j2` - Removed admin_users template section, added database role comment
+- `ansible/playbooks/group_vars/all.yml` - Removed admin_users variable definition, added database role comment
+
+### Technical Details
+
+**Token Expiry Implementation**:
+- AuthService struct now stores tokenExpiryHours from config
+- NewAuthService validates and defaults to 1 hour if invalid
+- GenerateTokenPair uses `time.Duration(a.tokenExpiryHours) * time.Hour`
+- Startup log shows configured token expiry: "Authentication service initialized (token expiry: 24 hours)"
+
+**Admin Role Check**:
+- Password reset iterates all users from database
+- Checks if email matches AND role is 'system_admin' or 'account_admin'
+- No longer uses api.Config.Auth.AdminUsers array
+- Prevents email enumeration attacks (always returns success message)
+
+### Removed Configuration
+
+The following configuration setting has been removed:
+```yaml
+auth:
+  admin_users:
+    - "admin@company.com"
+```
+
+**Reason**: Admin roles are now stored in the database `control_users.role` field with values: `system_admin`, `account_admin`, `account_readonly`.
+
+**Migration**:
+- Remove `admin_users` array from your config.yaml if present (won't cause errors but is no longer read)
+- Admin users should be created via the API with appropriate roles: `POST /api/v1/users`
+- Existing config files will continue to work - the setting is simply ignored if present
+
+### Binary
+
+**Build Information**:
+- Binary: `bytefreezer-control`
+- Compiled successfully with all changes
+
+---
+
+## v2.2.2: S3 Configuration for Dataset Cleanup (2025-10-21)
+
+### Features
+
+#### Centralized S3 Configuration for Dataset Cleanup
+- **S3 Configuration in Control Service**: Added centralized S3 configuration for dataset deletion operations
+  - S3 credentials and settings now configured in `config.yaml` instead of per-dataset
+  - Eliminates EC2 IMDS credential chain fallback that was causing errors
+  - Explicit credential configuration prevents AWS SDK from attempting IAM role lookups
+  - Configurable bucket names for intake and piper buckets
+  - Implementation: `config/config.go:55-64`, `storage/interface.go:223-233`
+
+**Configuration Structure** (`config.yaml:26-35`):
+```yaml
+s3:
+  enabled: true
+  intake_bucket: "intake"
+  piper_bucket: "piper"
+  region: "us-east-1"
+  endpoint: "192.168.86.125:9000"  # MinIO endpoint
+  access_key: "AKIAQNXBAHUKIMJP26P6"
+  secret_key: "SECRET_KEY_AKIAQNXBAHUKIMJP26P6"
+  use_ssl: false
+```
+
+**Dataset Deletion Paths**:
+- Deletes from `{intake_bucket}/{tenant_id}/{dataset_id}/`
+- Deletes from `{piper_bucket}/{tenant_id}/{dataset_id}/`
+- Preserves packer output bucket (customer data)
+
+**Key Changes**:
+- `NewS3Cleaner()` now requires explicit credentials and never falls back to AWS default credential chain
+- `CleanupDatasetStorage()` accepts configurable bucket names instead of hardcoded values
+- `DeleteDataset()` uses control service S3 config instead of dataset config
+- S3 cleanup only runs if `s3.enabled: true` in control config
+
+### Bug Fixes
+
+#### Fix Dataset Deletion S3 Credential Errors
+- **Resolved EC2 IMDS Errors**: Fixed "no EC2 IMDS role found" errors during dataset deletion
+  - Root cause: AWS SDK was falling back to EC2 Instance Metadata Service for credentials
+  - Solution: Use explicit static credentials only, disable default credential chain
+  - Error no longer attempts to contact 169.254.169.254 (EC2 metadata endpoint)
+  - Implementation: `storage/s3_helper.go:21-37`
+
+### Files Modified
+
+**Backend**:
+- `config/config.go` - Added S3Config struct with bucket names
+- `storage/interface.go` - Added S3Config to storage Config
+- `storage/s3_helper.go` - Updated NewS3Cleaner to use only explicit credentials
+- `storage/postgresql.go` - Updated DeleteDataset to use control config S3 settings
+- `services/services.go` - Pass S3 config from control config to storage
+- `config.yaml` - Added S3 configuration section
+
+**Ansible/AWX Templates**:
+- `ansible/playbooks/templates/config.yaml.j2` - Added S3 configuration template section
+- `ansible/playbooks/group_vars/all.yml` - Added S3 configuration variables
+
+### Binary
+
+**Build Information**:
+- Binary: `bytefreezer-control`
+- Size: 34 MB
+- MD5: `4937b8ce1f0c3286445638a12e1f9af1`
+
+---
+
+## v2.2.1: Audit Log Improvements (2025-10-21)
+
+### Features
+
+#### Add User Email to Audit Logs
+- **User Email Field Added**: Added `user_email` column to audit logs for better readability
+  - Audit logs now display the user's email address directly
+  - Eliminates need to join with users table to see who performed actions
+  - Makes audit log viewing more user-friendly in the UI
+  - Database migration: `storage/migrations/004_add_audit_log_user_email.sql`
+  - Column: `user_email VARCHAR(255)`
+
+### Bug Fixes
+
+#### Remove token_refresh from Audit Log
+- **Token Refresh Logging Removed**: Removed audit logging for token refresh operations to reduce log noise
+  - Token refresh is an automated, frequent operation that doesn't require audit logging
+  - Reduces audit log table size and improves query performance
+  - Initial login events are still logged for security tracking
+  - Implementation: `api/handlers.go:1097-1100` (removed)
+  - Deleted 142 existing token_refresh entries from database
+
+### Files Modified
+
+**Backend**:
+- `storage/interface.go` - Added `UserEmail` field to AuditLog struct
+- `services/audit_log.go` - Updated LogAction() to accept userEmail parameter
+- `api/handlers.go` - Updated all LogAction() calls to pass user email
+- `storage/postgresql.go` - Updated SELECT queries and Scan calls for user_email
+- `storage/migrations/004_add_audit_log_user_email.sql` - New migration file
+
+**Frontend**:
+- `src/lib/api.ts` - Added `user_email` field to AuditLog interface
+
+---
+
 ## v2.2.0: Proxy Configuration Management (2025-10-21)
 
 ### Major Features

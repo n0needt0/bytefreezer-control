@@ -98,6 +98,16 @@ func NewServices(config *config.Config) *Services {
 			Database:       config.Database.Database,
 			TimeoutSeconds: 10, // Default timeout
 			SSLMode:        config.Database.SSLMode,
+			S3: storage.S3Config{
+				Enabled:      config.S3.Enabled,
+				IntakeBucket: config.S3.IntakeBucket,
+				PiperBucket:  config.S3.PiperBucket,
+				Region:       config.S3.Region,
+				Endpoint:     config.S3.Endpoint,
+				AccessKey:    config.S3.AccessKey,
+				SecretKey:    config.S3.SecretKey,
+				UseSSL:       config.S3.UseSSL,
+			},
 		}
 
 		storageInstance, err := storage.NewStorage(storageConfig)
@@ -134,8 +144,8 @@ func NewServices(config *config.Config) *Services {
 
 				// Initialize authentication service
 				if config.Auth.JWTSecret != "" {
-					services.Auth = NewAuthService(db, config.Auth.JWTSecret)
-					log.Info("Authentication service initialized")
+					services.Auth = NewAuthService(db, config.Auth.JWTSecret, config.Auth.TokenExpiryHours)
+					log.Infof("Authentication service initialized (token expiry: %d hours)", config.Auth.TokenExpiryHours)
 				} else {
 					log.Warn("JWT secret not configured, authentication service disabled")
 				}

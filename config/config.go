@@ -13,6 +13,7 @@ type Config struct {
 	Logging        LoggingConfig        `yaml:"logging"`
 	Server         ServerConfig         `yaml:"server"`
 	Database       DatabaseConfig       `yaml:"database"`
+	S3             S3Config             `yaml:"s3"`
 	Otel           OtelConfig           `yaml:"otel"`
 	Housekeeping   HousekeepingConfig   `yaml:"housekeeping"`
 	Auth           AuthConfig           `yaml:"auth"`
@@ -51,6 +52,17 @@ type DatabaseConfig struct {
 	MaxIdleConnections int    `yaml:"max_idle_connections"`
 }
 
+type S3Config struct {
+	Enabled      bool   `yaml:"enabled"`
+	IntakeBucket string `yaml:"intake_bucket"`
+	PiperBucket  string `yaml:"piper_bucket"`
+	Region       string `yaml:"region"`
+	Endpoint     string `yaml:"endpoint"`
+	AccessKey    string `yaml:"access_key"`
+	SecretKey    string `yaml:"secret_key"`
+	UseSSL       bool   `yaml:"use_ssl"`
+}
+
 type OtelConfig struct {
 	Enabled               bool   `yaml:"enabled"`
 	ServiceName           string `yaml:"service_name"`
@@ -68,7 +80,7 @@ type AuthConfig struct {
 	Enabled          bool     `yaml:"enabled"`
 	JWTSecret        string   `yaml:"jwt_secret"`
 	TokenExpiryHours int      `yaml:"token_expiry_hours"`
-	AdminUsers       []string `yaml:"admin_users"`
+	AdminUsers       []string `yaml:"admin_users"` // Deprecated: Admin roles are now in database (control_users.role)
 }
 
 type RateLimitConfig struct {

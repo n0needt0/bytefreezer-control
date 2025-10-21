@@ -28,6 +28,17 @@ database:
   max_connections: {{ config.database.max_connections }}
   max_idle_connections: {{ config.database.max_idle_connections }}
 
+# S3 configuration for dataset cleanup operations
+s3:
+  enabled: {{ config.s3.enabled | lower }}
+  intake_bucket: "{{ config.s3.intake_bucket }}"
+  piper_bucket: "{{ config.s3.piper_bucket }}"
+  region: "{{ config.s3.region }}"
+  endpoint: "{{ config.s3.endpoint }}"
+  access_key: "{{ config.s3.access_key }}"
+  secret_key: "{{ config.s3.secret_key }}"
+  use_ssl: {{ config.s3.use_ssl | lower }}
+
 # OpenTelemetry configuration
 otel:
   enabled: {{ config.otel.enabled | lower }}
@@ -42,14 +53,11 @@ housekeeping:
   interval_seconds: {{ config.housekeeping.interval_seconds }}
 
 # Authentication and authorization
+# Note: Admin roles (system_admin, account_admin, account_readonly) are managed in the database (control_users.role)
 auth:
   enabled: {{ config.auth.enabled | lower }}
   jwt_secret: "{{ config.auth.jwt_secret }}"
   token_expiry_hours: {{ config.auth.token_expiry_hours }}
-  admin_users:
-{% for user in config.auth.admin_users %}
-    - "{{ user }}"
-{% endfor %}
 
 # Rate limiting
 rate_limit:

@@ -100,6 +100,7 @@ type DatasetMetrics struct {
 type AuditLog struct {
 	ID           int64                  `json:"id" db:"id"`
 	UserID       string                 `json:"user_id" db:"user_id"`
+	UserEmail    string                 `json:"user_email" db:"user_email"`
 	AccountID    string                 `json:"account_id" db:"account_id"`
 	Action       string                 `json:"action" db:"action"`
 	ResourceType string                 `json:"resource_type" db:"resource_type"`
@@ -211,11 +212,24 @@ type Storage interface {
 
 // Config represents PostgreSQL database configuration
 type Config struct {
-	Type           string `yaml:"type" json:"type"`                       // postgresql (only supported type now)
-	URI            string `yaml:"uri" json:"uri"`                         // PostgreSQL connection URI
-	Database       string `yaml:"database" json:"database"`               // Database name
-	TimeoutSeconds int    `yaml:"timeout_seconds" json:"timeout_seconds"` // Connection timeout
-	SSLMode        string `yaml:"ssl_mode" json:"ssl_mode"`               // PostgreSQL SSL mode (disable, require, verify-ca, verify-full)
+	Type           string   `yaml:"type" json:"type"`                       // postgresql (only supported type now)
+	URI            string   `yaml:"uri" json:"uri"`                         // PostgreSQL connection URI
+	Database       string   `yaml:"database" json:"database"`               // Database name
+	TimeoutSeconds int      `yaml:"timeout_seconds" json:"timeout_seconds"` // Connection timeout
+	SSLMode        string   `yaml:"ssl_mode" json:"ssl_mode"`               // PostgreSQL SSL mode (disable, require, verify-ca, verify-full)
+	S3             S3Config `yaml:"s3" json:"s3"`                           // S3 configuration for dataset cleanup
+}
+
+// S3Config holds S3 credentials and settings for dataset cleanup operations
+type S3Config struct {
+	Enabled      bool   `yaml:"enabled" json:"enabled"`             // Enable S3 cleanup operations
+	IntakeBucket string `yaml:"intake_bucket" json:"intake_bucket"` // Intake bucket name
+	PiperBucket  string `yaml:"piper_bucket" json:"piper_bucket"`   // Piper bucket name
+	Region       string `yaml:"region" json:"region"`               // AWS region (e.g., us-east-1)
+	Endpoint     string `yaml:"endpoint" json:"endpoint"`           // Custom endpoint for MinIO/LocalStack
+	AccessKey    string `yaml:"access_key" json:"access_key"`       // S3 access key
+	SecretKey    string `yaml:"secret_key" json:"secret_key"`       // S3 secret key
+	UseSSL       bool   `yaml:"use_ssl" json:"use_ssl"`             // Use SSL/TLS for S3 connections
 }
 
 // Migration represents a database migration

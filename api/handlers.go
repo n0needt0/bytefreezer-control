@@ -715,7 +715,7 @@ func (api *API) AssumeAccountAdmin() usecase.Interactor {
 
 		// Log audit event
 		if api.Services.AuditLog != nil {
-			api.Services.AuditLog.LogAction(ctx, virtualUser.ID, input.AccountID, "assume_account_admin", input.AccountID, "", map[string]interface{}{
+			api.Services.AuditLog.LogAction(ctx, virtualUser.ID, virtualUser.Email, input.AccountID, "assume_account_admin", input.AccountID, "", map[string]interface{}{
 				"account_name": account.Name,
 			})
 		}
@@ -1045,7 +1045,7 @@ func (api *API) Login() usecase.Interactor {
 
 		// Log audit event
 		if api.Services.AuditLog != nil {
-			api.Services.AuditLog.LogAction(ctx, user.ID, user.AccountID, "login", "", "", map[string]interface{}{})
+			api.Services.AuditLog.LogAction(ctx, user.ID, user.Email, user.AccountID, "login", "", "", map[string]interface{}{})
 		}
 
 		output.Token = accessToken
@@ -1094,11 +1094,6 @@ func (api *API) RefreshToken() usecase.Interactor {
 		// Store new session (ignore errors as session creation is not critical)
 		_ = api.Services.Auth.CreateSession(ctx, user.ID, newAccessToken, newRefreshToken, "", "", expiresAt, expiresAt.Add(7*24*time.Hour))
 
-		// Log audit event
-		if api.Services.AuditLog != nil {
-			api.Services.AuditLog.LogAction(ctx, user.ID, user.AccountID, "token_refresh", "", "", map[string]interface{}{})
-		}
-
 		output.Token = newAccessToken
 		output.RefreshToken = newRefreshToken
 		output.ExpiresAt = expiresAt
@@ -1120,12 +1115,18 @@ func (api *API) RequestPasswordReset() usecase.Interactor {
 	u := usecase.NewInteractor(func(ctx context.Context, input PasswordResetRequest, output *PasswordResetResponse) error {
 		api.Services.IncrementAPIRequests()
 
-		// Check if email is in admin list
+		// Check if user exists in database with admin role (system_admin or account_admin)
 		isAdmin := false
-		for _, adminUser := range api.Config.Auth.AdminUsers {
-			if adminUser == input.Email {
-				isAdmin = true
-				break
+		if api.Services.Auth != nil {
+			// Try to find user by email in database
+			users, err := api.Services.Auth.ListUsers(ctx, "")
+			if err == nil {
+				for _, user := range users {
+					if user.Email == input.Email && (user.Role == "system_admin" || user.Role == "account_admin") {
+						isAdmin = true
+						break
+					}
+				}
 			}
 		}
 
@@ -1141,7 +1142,7 @@ func (api *API) RequestPasswordReset() usecase.Interactor {
 			log.Infof("Password reset requested for admin user: %s", input.Email)
 		} else {
 			output.Message = "If your email is registered as an administrator, you will receive password reset instructions."
-			log.Warnf("Password reset requested for non-admin email: %s", input.Email)
+			log.Warnf("Password reset requested for non-admin or non-existent email: %s", input.Email)
 		}
 
 		return nil
@@ -1401,7 +1402,7 @@ func (api *API) DeleteDataset() usecase.Interactor {
 
 		// Log audit event BEFORE deletion
 		if api.Services.AuditLog != nil {
-			api.Services.AuditLog.LogAction(ctx, userID, accountID, "delete_dataset", "dataset", input.DatasetID, map[string]interface{}{
+			api.Services.AuditLog.LogAction(ctx, userID, "", accountID, "delete_dataset", "dataset", input.DatasetID, map[string]interface{}{
 				"dataset_name": dataset.Name,
 				"tenant_id":    input.TenantID,
 				"skip_s3_cleanup": input.SkipS3Cleanup,
@@ -1412,7 +1413,7 @@ func (api *API) DeleteDataset() usecase.Interactor {
 		if err := api.Services.Storage.DeleteDataset(ctx, input.TenantID, input.DatasetID, input.SkipS3Cleanup); err != nil {
 			// Log failure in audit log
 			if api.Services.AuditLog != nil {
-				api.Services.AuditLog.LogAction(ctx, userID, accountID, "delete_dataset_failed", "dataset", input.DatasetID, map[string]interface{}{
+				api.Services.AuditLog.LogAction(ctx, userID, "", accountID, "delete_dataset_failed", "dataset", input.DatasetID, map[string]interface{}{
 					"dataset_name": dataset.Name,
 					"tenant_id":    input.TenantID,
 					"error":        err.Error(),
@@ -1553,7 +1554,7 @@ func (api *API) CreateUser() usecase.Interactor {
 
 		// Log audit event
 		if api.Services.AuditLog != nil {
-			api.Services.AuditLog.LogAction(ctx, user.ID, input.AccountID, "user_created", user.ID, "", map[string]interface{}{
+			api.Services.AuditLog.LogAction(ctx, user.ID, user.Email, input.AccountID, "user_created", user.ID, "", map[string]interface{}{
 				"email": user.Email,
 				"role":  user.Role,
 			})
@@ -1615,7 +1616,7 @@ func (api *API) UpdateUser() usecase.Interactor {
 
 		// Log audit event
 		if api.Services.AuditLog != nil {
-			api.Services.AuditLog.LogAction(ctx, user.ID, user.AccountID, "user_updated", user.ID, "", map[string]interface{}{
+			api.Services.AuditLog.LogAction(ctx, user.ID, user.Email, user.AccountID, "user_updated", user.ID, "", map[string]interface{}{
 				"email": user.Email,
 			})
 		}
@@ -1655,7 +1656,7 @@ func (api *API) DeleteUser() usecase.Interactor {
 		if api.Services.AuditLog != nil {
 			user, err := api.Services.Auth.GetUserByID(ctx, input.UserID)
 			if err == nil {
-				api.Services.AuditLog.LogAction(ctx, user.ID, user.AccountID, "user_deleted", user.ID, "", map[string]interface{}{
+				api.Services.AuditLog.LogAction(ctx, user.ID, user.Email, user.AccountID, "user_deleted", user.ID, "", map[string]interface{}{
 					"email": user.Email,
 				})
 			}
@@ -1704,7 +1705,7 @@ func (api *API) ToggleUserActive() usecase.Interactor {
 			if input.Active {
 				action = "user_activated"
 			}
-			api.Services.AuditLog.LogAction(ctx, user.ID, user.AccountID, action, user.ID, "", map[string]interface{}{
+			api.Services.AuditLog.LogAction(ctx, user.ID, user.Email, user.AccountID, action, user.ID, "", map[string]interface{}{
 				"email": user.Email,
 			})
 		}

@@ -8,6 +8,20 @@ Avoid flattery, compliments, or positive language. Be clear and concise. Do not 
 
 requirements:
 
+please add s3 configuration , where data should be deleted:
 
-- all tables used by control should be prefixed with control_
-- please rework, dont bother with backwards compatibility drop all and recreate.
+in buckets when deleting data drop 
+
+intake_bucket/{tenant_id}/{dataset_id}
+piper_bucket/{tenant_id}/{dataset_id}
+
+s3configuration:
+  intake_bucket: "intake"
+  piper_bucket: "piper"
+
+  region: "us-east-1"
+  endpoint: "192.168.86.125:9000"  # Your MinIO endpoint
+  ssl: false
+  access_key: "AKIAQNXBAHUKIMJP26P6"
+  secret_key: "SECRET_KEY_AKIAQNXBAHUKIMJP26P6"
+  use_iam_role: false

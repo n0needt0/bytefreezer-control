@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -18,29 +17,22 @@ type S3Cleaner struct {
 	client *s3.Client
 }
 
-// NewS3Cleaner creates a new S3 cleaner with credentials from dataset config
+// NewS3Cleaner creates a new S3 cleaner with explicit credentials
+// This function ONLY uses the provided credentials and does not fall back
+// to the AWS default credential chain (env vars, shared config, IAM role, EC2 IMDS)
 func NewS3Cleaner(ctx context.Context, accessKey, secretKey, region, endpoint string, useSSL bool) (*S3Cleaner, error) {
-	// If no explicit credentials provided, try environment or default config
-	var cfg aws.Config
-	var err error
-
-	if accessKey != "" && secretKey != "" {
-		// Use explicit credentials
-		cfg, err = config.LoadDefaultConfig(ctx,
-			config.WithRegion(region),
-			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-				accessKey,
-				secretKey,
-				"",
-			)),
-		)
-	} else {
-		// Use default credential chain (env vars, shared config, IAM role, etc.)
-		cfg, err = config.LoadDefaultConfig(ctx, config.WithRegion(region))
+	if accessKey == "" || secretKey == "" {
+		return nil, fmt.Errorf("S3 access_key and secret_key are required for S3 cleanup operations")
 	}
 
-	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+	// Create config with ONLY static credentials - no default credential chain fallback
+	cfg := aws.Config{
+		Region: region,
+		Credentials: credentials.NewStaticCredentialsProvider(
+			accessKey,
+			secretKey,
+			"",
+		),
 	}
 
 	// Create S3 client
@@ -144,7 +136,7 @@ func (s *S3Cleaner) DeletePrefix(ctx context.Context, bucket, prefix string) err
 // - packer bucket: Final parquet output (PRESERVED - customer data)
 //
 // The dataset configuration remains in the database for re-use
-func (s *S3Cleaner) CleanupDatasetStorage(ctx context.Context, packerBucket, tenantID, datasetID string) error {
+func (s *S3Cleaner) CleanupDatasetStorage(ctx context.Context, intakeBucket, piperBucket, tenantID, datasetID string) error {
 	// Define the buckets and paths to delete (ONLY intermediate data, NOT final output)
 	// Note: We use the same credentials but different bucket names
 	cleanupTargets := []struct {
@@ -152,8 +144,8 @@ func (s *S3Cleaner) CleanupDatasetStorage(ctx context.Context, packerBucket, ten
 		bucket string
 		prefix string
 	}{
-		{"intake", "intake", fmt.Sprintf("%s/%s/", tenantID, datasetID)},
-		{"piper", "piper", fmt.Sprintf("%s/%s/", tenantID, datasetID)},
+		{"intake", intakeBucket, fmt.Sprintf("%s/%s/", tenantID, datasetID)},
+		{"piper", piperBucket, fmt.Sprintf("%s/%s/", tenantID, datasetID)},
 		// NOTE: packer output is NEVER deleted - it belongs to the customer
 	}
 
@@ -175,7 +167,7 @@ func (s *S3Cleaner) CleanupDatasetStorage(ctx context.Context, packerBucket, ten
 		return fmt.Errorf("S3 cleanup completed with %d errors: %v", len(cleanupErrors), cleanupErrors)
 	}
 
-	log.Infof("Dataset %s/%s S3 cleanup complete. Deleted intake and piper data. Preserved packer output (bucket=%s) for customer.", tenantID, datasetID, packerBucket)
+	log.Infof("Dataset %s/%s S3 cleanup complete. Deleted intake and piper data. Packer output preserved for customer.", tenantID, datasetID)
 	return nil
 }
 

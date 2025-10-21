@@ -15,8 +15,9 @@ import (
 )
 
 type AuthService struct {
-	db        *sql.DB
-	jwtSecret []byte
+	db               *sql.DB
+	jwtSecret        []byte
+	tokenExpiryHours int // Access token expiry in hours from config
 }
 
 type User struct {
@@ -68,10 +69,15 @@ type LoginResponse struct {
 	User         User      `json:"user"`
 }
 
-func NewAuthService(db *sql.DB, jwtSecret string) *AuthService {
+func NewAuthService(db *sql.DB, jwtSecret string, tokenExpiryHours int) *AuthService {
+	// Default to 1 hour if not specified or invalid
+	if tokenExpiryHours <= 0 {
+		tokenExpiryHours = 1
+	}
 	return &AuthService{
-		db:        db,
-		jwtSecret: []byte(jwtSecret),
+		db:               db,
+		jwtSecret:        []byte(jwtSecret),
+		tokenExpiryHours: tokenExpiryHours,
 	}
 }
 
@@ -140,8 +146,8 @@ func (a *AuthService) AuthenticateUser(ctx context.Context, email, password stri
 
 // GenerateTokenPair creates access and refresh tokens for a user
 func (a *AuthService) GenerateTokenPair(user *User) (string, string, time.Time, error) {
-	// Access token: 1 hour expiry
-	expiresAt := time.Now().Add(1 * time.Hour)
+	// Access token: configured expiry (default 1 hour)
+	expiresAt := time.Now().Add(time.Duration(a.tokenExpiryHours) * time.Hour)
 	claims := JWTClaims{
 		UserID:    user.ID,
 		AccountID: user.AccountID,

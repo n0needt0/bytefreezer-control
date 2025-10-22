@@ -1,5 +1,98 @@
 # ByteFreezer Control - Release Notes
 
+## v2.2.6: Migration System Registration (2025-10-21)
+
+### Features
+
+#### Registered Missing Database Migrations
+- **Migration System Completeness**: Registered migrations 4, 5, and 6 in the PostgreSQL migrator
+  - Migration 4: Add resource_name column to audit log
+  - Migration 5: Add user_email column to audit log
+  - Migration 6: Cleanup token_refresh audit log entries
+  - These migrations were created as SQL files but never registered in the migrator
+  - Now they will execute on next service restart
+  - Implementation: `storage/postgresql_migrator.go:206-237, 457-491, 540-552`
+
+**Migration Details**:
+
+**Migration 4** - Add resource_name column:
+- Adds `resource_name VARCHAR(255)` to control_audit_log
+- Uses DO block with IF NOT EXISTS for idempotency
+- Source file: `storage/migrations/003_add_audit_log_resource_name.sql`
+
+**Migration 5** - Add user_email column:
+- Adds `user_email VARCHAR(255)` to control_audit_log
+- Uses DO block with IF NOT EXISTS for idempotency
+- Source file: `storage/migrations/004_add_audit_log_user_email.sql`
+
+**Migration 6** - Cleanup token_refresh logs:
+- Deletes all token_refresh entries from control_audit_log
+- These are noisy logs that were removed from code in v2.2.1
+- Source file: `storage/migrations/005_cleanup_token_refresh_audit_logs.sql`
+- Note: No rollback possible (deleted data cannot be restored)
+
+**Rollback Support**:
+- Migration 4 rollback: Drops resource_name column
+- Migration 5 rollback: Drops user_email column
+- Migration 6 rollback: No rollback (cleanup migration)
+
+### Files Modified
+
+**Backend**:
+- `storage/postgresql_migrator.go` - Registered migrations 4, 5, and 6 in getAllMigrations(), getMigrationSQL(), and getRollbackSQL()
+
+### Technical Details
+
+**Registration Structure**:
+```go
+// Added to getAllMigrations()
+{
+    Version:     4,
+    Name:        "add_audit_log_resource_name",
+    Description: "Add resource_name column to control_audit_log table",
+},
+{
+    Version:     5,
+    Name:        "add_audit_log_user_email",
+    Description: "Add user_email column to control_audit_log table",
+},
+{
+    Version:     6,
+    Name:        "cleanup_token_refresh_audit_logs",
+    Description: "Remove noisy token_refresh entries from audit logs",
+}
+```
+
+**Migration Execution**:
+- Migrations run automatically on service startup
+- Version tracking in control_migrations table
+- Transactional execution with rollback on failure
+- Idempotent SQL ensures safe re-runs
+
+### Deployment Notes
+
+**On Next Restart**:
+1. Service will detect pending migrations 4, 5, 6
+2. Apply them in order (4 → 5 → 6)
+3. Record version in control_migrations table
+4. Migration 6 will delete all existing token_refresh audit log entries
+
+**Expected Log Output**:
+```
+INFO: Applying migration 4: add_audit_log_resource_name
+INFO: Applying migration 5: add_audit_log_user_email
+INFO: Applying migration 6: cleanup_token_refresh_audit_logs
+INFO: Deleted N rows from control_audit_log (action='token_refresh')
+```
+
+### Binary
+
+**Build Information**:
+- Binary: `bytefreezer-control`
+- Compiled successfully with all changes
+
+---
+
 ## v2.2.5: Audit Log NULL Handling Fix (2025-10-21)
 
 ### Bug Fixes

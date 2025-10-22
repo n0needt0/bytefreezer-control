@@ -219,6 +219,21 @@ func (m *PostgreSQLMigrator) getAllMigrations() []Migration {
 			Name:        "add_gin_indexes",
 			Description: "Add GIN indexes for JSONB config fields",
 		},
+		{
+			Version:     4,
+			Name:        "add_audit_log_resource_name",
+			Description: "Add resource_name column to control_audit_log table",
+		},
+		{
+			Version:     5,
+			Name:        "add_audit_log_user_email",
+			Description: "Add user_email column to control_audit_log table",
+		},
+		{
+			Version:     6,
+			Name:        "cleanup_token_refresh_audit_logs",
+			Description: "Remove noisy token_refresh entries from audit logs",
+		},
 	}
 }
 
@@ -439,6 +454,42 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 			CREATE INDEX idx_control_tenants_org_size ON control_tenants USING gin((config->'organization'->>'size'));
 			CREATE INDEX idx_control_datasets_source_type ON control_datasets USING gin((config->'source'->>'type'));`
 
+	case 4:
+		return `
+			-- Add resource_name column to audit log
+			DO $$
+			BEGIN
+			    IF NOT EXISTS (
+			        SELECT 1
+			        FROM information_schema.columns
+			        WHERE table_name = 'control_audit_log'
+			        AND column_name = 'resource_name'
+			    ) THEN
+			        ALTER TABLE control_audit_log ADD COLUMN resource_name VARCHAR(255);
+			    END IF;
+			END $$;`
+
+	case 5:
+		return `
+			-- Add user_email column to audit log
+			DO $$
+			BEGIN
+			    IF NOT EXISTS (
+			        SELECT 1
+			        FROM information_schema.columns
+			        WHERE table_name = 'control_audit_log'
+			        AND column_name = 'user_email'
+			    ) THEN
+			        ALTER TABLE control_audit_log ADD COLUMN user_email VARCHAR(255);
+			    END IF;
+			END $$;`
+
+	case 6:
+		return `
+			-- Delete all token_refresh audit log entries
+			-- These are too noisy and were removed from logging in v2.2.1
+			DELETE FROM control_audit_log WHERE action = 'token_refresh';`
+
 	default:
 		return ""
 	}
@@ -485,6 +536,20 @@ func (m *PostgreSQLMigrator) getRollbackSQL(version int) string {
 			DROP INDEX IF EXISTS idx_control_datasets_config_gin;
 			DROP INDEX IF EXISTS idx_control_tenants_config_gin;
 			DROP INDEX IF EXISTS idx_control_accounts_config_gin;`
+
+	case 4:
+		return `
+			-- Remove resource_name column from audit log
+			ALTER TABLE control_audit_log DROP COLUMN IF EXISTS resource_name;`
+
+	case 5:
+		return `
+			-- Remove user_email column from audit log
+			ALTER TABLE control_audit_log DROP COLUMN IF EXISTS user_email;`
+
+	case 6:
+		return `
+			-- No rollback for cleanup migration - deleted data cannot be restored`
 
 	default:
 		return ""

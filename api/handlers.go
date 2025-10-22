@@ -975,8 +975,16 @@ func (api *API) UpdateTenant() usecase.Interactor {
 			tenant.Active = *input.Active
 		}
 		if input.Config != nil {
-			oldValues["config"] = tenant.Config
-			changes["config"] = *input.Config
+			// Deep copy the old config to prevent reference sharing
+			oldConfigBytes, err := json.Marshal(tenant.Config)
+			if err == nil {
+				var oldConfigCopy storage.TenantConfig
+				if err := json.Unmarshal(oldConfigBytes, &oldConfigCopy); err == nil {
+					// Store full config in audit log (backend)
+					oldValues["config"] = oldConfigCopy
+					changes["config"] = *input.Config
+				}
+			}
 			tenant.Config = *input.Config
 		}
 
@@ -1439,15 +1447,15 @@ func (api *API) UpdateDataset() usecase.Interactor {
 		}
 		if input.Config != nil {
 			// Deep copy the old config to prevent reference sharing
-			// We use JSON marshaling/unmarshaling to ensure a proper deep copy
 			oldConfigBytes, err := json.Marshal(dataset.Config)
 			if err == nil {
 				var oldConfigCopy storage.DatasetConfig
 				if err := json.Unmarshal(oldConfigBytes, &oldConfigCopy); err == nil {
+					// Store full config in audit log (backend)
 					oldValues["config"] = oldConfigCopy
+					changes["config"] = *input.Config
 				}
 			}
-			changes["config"] = *input.Config
 			dataset.Config = *input.Config
 		}
 
@@ -2007,6 +2015,18 @@ func (api *API) GetPluginSchemas() usecase.Interactor {
 
 // Audit Log API handlers
 
+// AuditLogWithDiff extends AuditLog with computed diffs for config changes
+type AuditLogWithDiff struct {
+	storage.AuditLog
+	ConfigDiff *ConfigDiff `json:"config_diff,omitempty"`
+}
+
+// ConfigDiff represents the computed differences in configuration
+type ConfigDiff struct {
+	OldValues map[string]interface{} `json:"old"`
+	NewValues map[string]interface{} `json:"new"`
+}
+
 // ListAuditLogs returns audit logs filtered by account or system-wide
 func (api *API) ListAuditLogs() usecase.Interactor {
 	type listAuditLogsInput struct {
@@ -2020,10 +2040,10 @@ func (api *API) ListAuditLogs() usecase.Interactor {
 	}
 
 	type listAuditLogsOutput struct {
-		Items []storage.AuditLog `json:"items"`
-		Total int                `json:"total"`
-		Limit int                `json:"limit"`
-		Offset int               `json:"offset"`
+		Items  []AuditLogWithDiff `json:"items"`
+		Total  int                `json:"total"`
+		Limit  int                `json:"limit"`
+		Offset int                `json:"offset"`
 	}
 
 	u := usecase.NewInteractor(func(ctx context.Context, input listAuditLogsInput, output *listAuditLogsOutput) error {
@@ -2054,7 +2074,47 @@ func (api *API) ListAuditLogs() usecase.Interactor {
 			return fmt.Errorf("failed to list audit logs: %w", err)
 		}
 
-		output.Items = result.Items
+		// Transform each audit log to include computed config diffs
+		items := make([]AuditLogWithDiff, len(result.Items))
+		for i, auditLog := range result.Items {
+			item := AuditLogWithDiff{
+				AuditLog: auditLog,
+			}
+
+			// Check if this audit log has config changes in Details
+			if auditLog.Details != nil {
+				oldValuesRaw, hasOldValues := auditLog.Details["old_values"]
+				changesRaw, hasChanges := auditLog.Details["changes"]
+
+				if hasOldValues && hasChanges {
+					// Try to extract config from both old_values and changes
+					oldValues, okOld := oldValuesRaw.(map[string]interface{})
+					changes, okChanges := changesRaw.(map[string]interface{})
+
+					if okOld && okChanges {
+						oldConfig, hasOldConfig := oldValues["config"]
+						newConfig, hasNewConfig := changes["config"]
+
+						// If both configs exist, compute the diff
+						if hasOldConfig && hasNewConfig {
+							oldDiff, newDiff := computeConfigDiff(oldConfig, newConfig)
+
+							// Only add ConfigDiff if there are actual differences
+							if len(oldDiff) > 0 || len(newDiff) > 0 {
+								item.ConfigDiff = &ConfigDiff{
+									OldValues: oldDiff,
+									NewValues: newDiff,
+								}
+							}
+						}
+					}
+				}
+			}
+
+			items[i] = item
+		}
+
+		output.Items = items
 		output.Total = result.Total
 		output.Limit = input.Limit
 		output.Offset = input.Offset
@@ -2075,7 +2135,7 @@ func (api *API) GetAuditLog() usecase.Interactor {
 		LogID int64 `path:"logId" required:"true"`
 	}
 
-	u := usecase.NewInteractor(func(ctx context.Context, input getAuditLogInput, output *storage.AuditLog) error {
+	u := usecase.NewInteractor(func(ctx context.Context, input getAuditLogInput, output *AuditLogWithDiff) error {
 		api.Services.IncrementAPIRequests()
 		api.Services.IncrementDatabaseQueries()
 
@@ -2088,23 +2148,129 @@ func (api *API) GetAuditLog() usecase.Interactor {
 		// - Account admins: can only view logs for their account
 		// This should be done by extracting account_id from JWT and comparing with log.account_id
 
-		log, err := api.Services.Storage.GetAuditLog(ctx, input.LogID)
+		auditLog, err := api.Services.Storage.GetAuditLog(ctx, input.LogID)
 		if err != nil {
 			return fmt.Errorf("failed to get audit log: %w", err)
 		}
 
-		*output = *log
+		// Populate output with audit log
+		output.AuditLog = *auditLog
+
+		// Check if this audit log has config changes and compute diff
+		if auditLog.Details != nil {
+			oldValuesRaw, hasOldValues := auditLog.Details["old_values"]
+			changesRaw, hasChanges := auditLog.Details["changes"]
+
+			if hasOldValues && hasChanges {
+				oldValues, okOld := oldValuesRaw.(map[string]interface{})
+				changes, okChanges := changesRaw.(map[string]interface{})
+
+				if okOld && okChanges {
+					oldConfig, hasOldConfig := oldValues["config"]
+					newConfig, hasNewConfig := changes["config"]
+
+					if hasOldConfig && hasNewConfig {
+						oldDiff, newDiff := computeConfigDiff(oldConfig, newConfig)
+
+						if len(oldDiff) > 0 || len(newDiff) > 0 {
+							output.ConfigDiff = &ConfigDiff{
+								OldValues: oldDiff,
+								NewValues: newDiff,
+							}
+						}
+					}
+				}
+			}
+		}
+
 		return nil
 	})
 
 	u.SetTitle("Get Audit Log")
-	u.SetDescription("Returns a specific audit log entry by ID")
+	u.SetDescription("Returns a specific audit log entry by ID with computed config differences")
 	u.SetTags("audit")
 	u.SetExpectedErrors(usecaseStatus.NotFound)
 
 	return u
 }
 
+
+// computeConfigDiff compares two config objects and returns only the differences
+func computeConfigDiff(oldConfig, newConfig interface{}) (oldDiff, newDiff map[string]interface{}) {
+	oldDiff = make(map[string]interface{})
+	newDiff = make(map[string]interface{})
+
+	// Marshal both configs to JSON for comparison
+	oldBytes, err1 := json.Marshal(oldConfig)
+	newBytes, err2 := json.Marshal(newConfig)
+	if err1 != nil || err2 != nil {
+		// If marshaling fails, return empty diffs
+		return
+	}
+
+	// Unmarshal to generic maps for comparison
+	var oldMap, newMap map[string]interface{}
+	json.Unmarshal(oldBytes, &oldMap)
+	json.Unmarshal(newBytes, &newMap)
+
+	// Compare the two maps recursively
+	compareMap("", oldMap, newMap, oldDiff, newDiff)
+
+	return oldDiff, newDiff
+}
+
+// compareMap recursively compares two maps and stores differences with dotted path notation
+func compareMap(prefix string, oldMap, newMap map[string]interface{}, oldDiff, newDiff map[string]interface{}) {
+	// Check all keys in both maps
+	allKeys := make(map[string]bool)
+	for k := range oldMap {
+		allKeys[k] = true
+	}
+	for k := range newMap {
+		allKeys[k] = true
+	}
+
+	for key := range allKeys {
+		path := key
+		if prefix != "" {
+			path = prefix + "." + key
+		}
+
+		oldVal, oldExists := oldMap[key]
+		newVal, newExists := newMap[key]
+
+		// Key removed
+		if oldExists && !newExists {
+			oldDiff[path] = oldVal
+			newDiff[path] = nil
+			continue
+		}
+
+		// Key added
+		if !oldExists && newExists {
+			oldDiff[path] = nil
+			newDiff[path] = newVal
+			continue
+		}
+
+		// Both exist - check if they're maps (nested objects)
+		oldMapVal, oldIsMap := oldVal.(map[string]interface{})
+		newMapVal, newIsMap := newVal.(map[string]interface{})
+
+		if oldIsMap && newIsMap {
+			// Recursively compare nested maps
+			compareMap(path, oldMapVal, newMapVal, oldDiff, newDiff)
+		} else {
+			// Compare values directly
+			oldJSON, _ := json.Marshal(oldVal)
+			newJSON, _ := json.Marshal(newVal)
+			if string(oldJSON) != string(newJSON) {
+				oldDiff[path] = oldVal
+				newDiff[path] = newVal
+			}
+		}
+	}
+}
 
 // logAuditEvent is a helper that extracts user info from context and logs an audit event
 // This ensures audit logs always capture the user email and IP at the time of the event

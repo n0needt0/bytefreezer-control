@@ -85,11 +85,35 @@ INFO: Applying migration 6: cleanup_token_refresh_audit_logs
 INFO: Deleted N rows from control_audit_log (action='token_refresh')
 ```
 
+### Testing
+
+**Verified Migration Execution**:
+- ✅ All migrations (4, 5, 6) applied successfully on service startup
+- ✅ Migration 6 deleted all token_refresh entries from audit log
+- ✅ Confirmed via API: No token_refresh entries remain in database
+- ✅ Audit logs working properly with new columns (resource_name, user_email)
+- ✅ Service starts and runs successfully with all migrations applied
+
+**Test Commands**:
+```bash
+# Start service (migrations run automatically)
+./bytefreezer-control -config config.yaml
+
+# Verify no token_refresh entries remain
+curl -s http://localhost:8082/api/v1/audit-logs?limit=100 | grep token_refresh
+# Returns: (empty - no matches found)
+
+# Check audit logs are working
+curl -s http://localhost:8082/api/v1/audit-logs?limit=10
+# Returns: login, user_created, user_updated, etc. (no token_refresh)
+```
+
 ### Binary
 
 **Build Information**:
 - Binary: `bytefreezer-control`
 - Compiled successfully with all changes
+- Tested: Migrations execute successfully on startup
 
 ---
 

@@ -457,38 +457,18 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 	case 4:
 		return `
 			-- Add resource_name column to audit log
-			DO $$
-			BEGIN
-			    IF NOT EXISTS (
-			        SELECT 1
-			        FROM information_schema.columns
-			        WHERE table_name = 'control_audit_log'
-			        AND column_name = 'resource_name'
-			    ) THEN
-			        ALTER TABLE control_audit_log ADD COLUMN resource_name VARCHAR(255);
-			    END IF;
-			END $$;`
+			ALTER TABLE control_audit_log ADD COLUMN IF NOT EXISTS resource_name VARCHAR(255)`
 
 	case 5:
 		return `
 			-- Add user_email column to audit log
-			DO $$
-			BEGIN
-			    IF NOT EXISTS (
-			        SELECT 1
-			        FROM information_schema.columns
-			        WHERE table_name = 'control_audit_log'
-			        AND column_name = 'user_email'
-			    ) THEN
-			        ALTER TABLE control_audit_log ADD COLUMN user_email VARCHAR(255);
-			    END IF;
-			END $$;`
+			ALTER TABLE control_audit_log ADD COLUMN IF NOT EXISTS user_email VARCHAR(255)`
 
 	case 6:
 		return `
 			-- Delete all token_refresh audit log entries
 			-- These are too noisy and were removed from logging in v2.2.1
-			DELETE FROM control_audit_log WHERE action = 'token_refresh';`
+			DELETE FROM control_audit_log WHERE action = 'token_refresh'`
 
 	default:
 		return ""

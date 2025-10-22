@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base32"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -1437,7 +1438,15 @@ func (api *API) UpdateDataset() usecase.Interactor {
 			dataset.Status = input.Status
 		}
 		if input.Config != nil {
-			oldValues["config"] = dataset.Config
+			// Deep copy the old config to prevent reference sharing
+			// We use JSON marshaling/unmarshaling to ensure a proper deep copy
+			oldConfigBytes, err := json.Marshal(dataset.Config)
+			if err == nil {
+				var oldConfigCopy storage.DatasetConfig
+				if err := json.Unmarshal(oldConfigBytes, &oldConfigCopy); err == nil {
+					oldValues["config"] = oldConfigCopy
+				}
+			}
 			changes["config"] = *input.Config
 			dataset.Config = *input.Config
 		}

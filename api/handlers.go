@@ -714,11 +714,9 @@ func (api *API) AssumeAccountAdmin() usecase.Interactor {
 		_ = api.Services.Auth.CreateSession(ctx, virtualUser.ID, accessToken, refreshToken, "", "", expiresAt, expiresAt.Add(7*24*time.Hour))
 
 		// Log audit event
-		if api.Services.AuditLog != nil {
-			api.Services.AuditLog.LogAction(ctx, virtualUser.ID, virtualUser.Email, input.AccountID, "assume_account_admin", input.AccountID, "", map[string]interface{}{
-				"account_name": account.Name,
-			})
-		}
+		api.logAuditEvent(ctx, input.AccountID, "assume_account_admin", "account", input.AccountID, map[string]interface{}{
+			"account_name": account.Name,
+		})
 
 		output.Token = accessToken
 		output.RefreshToken = refreshToken
@@ -1044,9 +1042,7 @@ func (api *API) Login() usecase.Interactor {
 		_ = api.Services.Auth.CreateSession(ctx, user.ID, accessToken, refreshToken, "", "", expiresAt, expiresAt.Add(7*24*time.Hour))
 
 		// Log audit event
-		if api.Services.AuditLog != nil {
-			api.Services.AuditLog.LogAction(ctx, user.ID, user.Email, user.AccountID, "login", "", "", map[string]interface{}{})
-		}
+		api.logAuditEvent(ctx, user.AccountID, "login", "user", user.ID, map[string]interface{}{})
 
 		output.Token = accessToken
 		output.RefreshToken = refreshToken
@@ -1396,33 +1392,25 @@ func (api *API) DeleteDataset() usecase.Interactor {
 			accountID = tenant.AccountID
 		}
 
-		// TODO: Extract user ID from JWT token in context via authentication middleware
-		// For now, using "system" as placeholder - this should be replaced with actual user ID from JWT
-		userID := "system"
-
 		// Log audit event BEFORE deletion
-		if api.Services.AuditLog != nil {
-			api.Services.AuditLog.LogAction(ctx, userID, "", accountID, "delete_dataset", "dataset", input.DatasetID, map[string]interface{}{
-				"dataset_name": dataset.Name,
-				"tenant_id":    input.TenantID,
-				"skip_s3_cleanup": input.SkipS3Cleanup,
-			})
-		}
+		api.logAuditEvent(ctx, accountID, "delete_dataset", "dataset", input.DatasetID, map[string]interface{}{
+			"dataset_name": dataset.Name,
+			"tenant_id":    input.TenantID,
+			"skip_s3_cleanup": input.SkipS3Cleanup,
+		})
 
 		// Perform deletion
 		if err := api.Services.Storage.DeleteDataset(ctx, input.TenantID, input.DatasetID, input.SkipS3Cleanup); err != nil {
 			// Log failure in audit log
-			if api.Services.AuditLog != nil {
-				api.Services.AuditLog.LogAction(ctx, userID, "", accountID, "delete_dataset_failed", "dataset", input.DatasetID, map[string]interface{}{
-					"dataset_name": dataset.Name,
-					"tenant_id":    input.TenantID,
-					"error":        err.Error(),
-				})
-			}
+			api.logAuditEvent(ctx, accountID, "delete_dataset_failed", "dataset", input.DatasetID, map[string]interface{}{
+				"dataset_name": dataset.Name,
+				"tenant_id":    input.TenantID,
+				"error":        err.Error(),
+			})
 			return fmt.Errorf("failed to delete dataset: %w", err)
 		}
 
-		log.Infof("Dataset %s/%s (%s) deleted by user %s", input.TenantID, input.DatasetID, dataset.Name, userID)
+		log.Infof("Dataset %s/%s (%s) deleted successfully", input.TenantID, input.DatasetID, dataset.Name)
 
 		output.Success = true
 		if input.SkipS3Cleanup {
@@ -1553,12 +1541,10 @@ func (api *API) CreateUser() usecase.Interactor {
 		}
 
 		// Log audit event
-		if api.Services.AuditLog != nil {
-			api.Services.AuditLog.LogAction(ctx, user.ID, user.Email, input.AccountID, "user_created", user.ID, "", map[string]interface{}{
-				"email": user.Email,
-				"role":  user.Role,
-			})
-		}
+		api.logAuditEvent(ctx, input.AccountID, "user_created", "user", user.ID, map[string]interface{}{
+			"email": user.Email,
+			"role":  user.Role,
+		})
 
 		*output = *user
 		return nil
@@ -1615,11 +1601,9 @@ func (api *API) UpdateUser() usecase.Interactor {
 		}
 
 		// Log audit event
-		if api.Services.AuditLog != nil {
-			api.Services.AuditLog.LogAction(ctx, user.ID, user.Email, user.AccountID, "user_updated", user.ID, "", map[string]interface{}{
-				"email": user.Email,
-			})
-		}
+		api.logAuditEvent(ctx, user.AccountID, "user_updated", "user", user.ID, map[string]interface{}{
+			"email": user.Email,
+		})
 
 		*output = *user
 		return nil
@@ -1653,13 +1637,11 @@ func (api *API) DeleteUser() usecase.Interactor {
 		}
 
 		// Log audit event before deletion
-		if api.Services.AuditLog != nil {
-			user, err := api.Services.Auth.GetUserByID(ctx, input.UserID)
-			if err == nil {
-				api.Services.AuditLog.LogAction(ctx, user.ID, user.Email, user.AccountID, "user_deleted", user.ID, "", map[string]interface{}{
-					"email": user.Email,
-				})
-			}
+		user, err := api.Services.Auth.GetUserByID(ctx, input.UserID)
+		if err == nil {
+			api.logAuditEvent(ctx, user.AccountID, "user_deleted", "user", user.ID, map[string]interface{}{
+				"email": user.Email,
+			})
 		}
 
 		if err := api.Services.Auth.DeleteUser(ctx, input.UserID); err != nil {
@@ -1700,15 +1682,13 @@ func (api *API) ToggleUserActive() usecase.Interactor {
 		}
 
 		// Log audit event
-		if api.Services.AuditLog != nil {
-			action := "user_deactivated"
-			if input.Active {
-				action = "user_activated"
-			}
-			api.Services.AuditLog.LogAction(ctx, user.ID, user.Email, user.AccountID, action, user.ID, "", map[string]interface{}{
-				"email": user.Email,
-			})
+		action := "user_deactivated"
+		if input.Active {
+			action = "user_activated"
 		}
+		api.logAuditEvent(ctx, user.AccountID, action, "user", user.ID, map[string]interface{}{
+			"email": user.Email,
+		})
 
 		*output = *user
 		return nil
@@ -1967,3 +1947,17 @@ func (api *API) GetAuditLog() usecase.Interactor {
 	return u
 }
 
+
+// logAuditEvent is a helper that extracts user info from context and logs an audit event
+// This ensures audit logs always capture the user email and IP at the time of the event
+func (api *API) logAuditEvent(ctx context.Context, accountID, action, resourceType, resourceID string, details map[string]interface{}) {
+	if api.Services.AuditLog == nil {
+		return
+	}
+	
+	// Extract user info and IP from context (set by middleware)
+	auditInfo := ExtractAuditInfo(ctx)
+	
+	// Log the action with the captured user info
+	api.Services.AuditLog.LogAction(ctx, auditInfo.UserID, auditInfo.UserEmail, accountID, action, resourceType, resourceID, details)
+}

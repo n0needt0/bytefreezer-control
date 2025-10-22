@@ -604,3 +604,8 @@ func (a *AuthService) ChangePassword(ctx context.Context, userID, newPassword st
 	log.Infof("Password changed for user %s", userID)
 	return nil
 }
+
+// GetJWTSecret returns the JWT secret for middleware use
+func (a *AuthService) GetJWTSecret() []byte {
+	return a.jwtSecret
+}

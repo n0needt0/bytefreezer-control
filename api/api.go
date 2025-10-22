@@ -59,9 +59,14 @@ func (api *API) NewRouter() *web.Service {
 
 	// Add authentication middleware if enabled (but exclude public endpoints)
 	if api.Config.Auth.Enabled {
-		service.Use(middleware.ConditionalAuthMiddleware(api.Config.Auth))
-		log.Info("Authentication middleware enabled")
+		service.Use(middleware.ConditionalJWTAuthMiddleware(api.Config.Auth, api.Services.Auth))
+		log.Info("JWT authentication middleware enabled")
 	}
+
+	// Add audit middleware to extract user info and IP for audit logging
+	// This must come AFTER auth middleware so JWT claims are available in context
+	service.Use(middleware.AuditMiddleware())
+	log.Info("Audit middleware enabled")
 
 	// Wrap to finalize middleware setup
 	service.Wrap()

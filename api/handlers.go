@@ -1041,8 +1041,11 @@ func (api *API) Login() usecase.Interactor {
 		// Store session (ignore errors as session creation is not critical)
 		_ = api.Services.Auth.CreateSession(ctx, user.ID, accessToken, refreshToken, "", "", expiresAt, expiresAt.Add(7*24*time.Hour))
 
-		// Log audit event
-		api.logAuditEvent(ctx, user.AccountID, "login", "user", user.ID, map[string]interface{}{})
+		// Log audit event (use actual user info since login is a public endpoint)
+		auditInfo := ExtractAuditInfo(ctx)
+		if api.Services.AuditLog != nil {
+			api.Services.AuditLog.LogAction(ctx, user.ID, user.Email, user.AccountID, "login", "user", user.ID, auditInfo.IPAddress, map[string]interface{}{})
+		}
 
 		output.Token = accessToken
 		output.RefreshToken = refreshToken
@@ -1954,10 +1957,10 @@ func (api *API) logAuditEvent(ctx context.Context, accountID, action, resourceTy
 	if api.Services.AuditLog == nil {
 		return
 	}
-	
+
 	// Extract user info and IP from context (set by middleware)
 	auditInfo := ExtractAuditInfo(ctx)
-	
-	// Log the action with the captured user info
-	api.Services.AuditLog.LogAction(ctx, auditInfo.UserID, auditInfo.UserEmail, accountID, action, resourceType, resourceID, details)
+
+	// Log the action with the captured user info and IP address
+	api.Services.AuditLog.LogAction(ctx, auditInfo.UserID, auditInfo.UserEmail, accountID, action, resourceType, resourceID, auditInfo.IPAddress, details)
 }

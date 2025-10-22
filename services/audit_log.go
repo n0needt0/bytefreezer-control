@@ -19,7 +19,7 @@ func NewAuditLogService(db *sql.DB) *AuditLogService {
 }
 
 // LogAction logs a user action to the audit log
-func (a *AuditLogService) LogAction(ctx context.Context, userID, userEmail, accountID, action, resourceType, resourceID string, details map[string]interface{}) {
+func (a *AuditLogService) LogAction(ctx context.Context, userID, userEmail, accountID, action, resourceType, resourceID, ipAddress string, details map[string]interface{}) {
 	// Extract resource name from details if provided
 	resourceName := ""
 	if details != nil {
@@ -46,12 +46,8 @@ func (a *AuditLogService) LogAction(ctx context.Context, userID, userEmail, acco
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
 
-	ipAddress := ""
 	userAgent := ""
 	if details != nil {
-		if ip, ok := details["ip_address"].(string); ok {
-			ipAddress = ip
-		}
 		if ua, ok := details["user_agent"].(string); ok {
 			userAgent = ua
 		}
@@ -59,6 +55,6 @@ func (a *AuditLogService) LogAction(ctx context.Context, userID, userEmail, acco
 
 	_, err = a.db.ExecContext(ctx, query, userID, userEmail, accountID, action, resourceType, resourceID, resourceName, detailsJSON, ipAddress, userAgent)
 	if err != nil {
-		log.Errorf("Failed to write audit log entry: %v", err)
+		log.Errorf("Failed to write audit log entry (user_id=%s, email=%s, ip=%s, action=%s): %v", userID, userEmail, ipAddress, action, err)
 	}
 }

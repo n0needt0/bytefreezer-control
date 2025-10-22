@@ -489,6 +489,12 @@ func (api *API) CreateAccount() usecase.Interactor {
 			return fmt.Errorf("failed to create account: %w", err)
 		}
 
+		// Log audit event
+		api.logAuditEvent(ctx, account.ID, "account_created", "account", account.ID, map[string]interface{}{
+			"account_name": account.Name,
+			"email":        account.Email,
+		})
+
 		*output = *account
 		return nil
 	})
@@ -595,20 +601,37 @@ func (api *API) UpdateAccount() usecase.Interactor {
 			return fmt.Errorf("failed to get account: %w", err)
 		}
 
-		// Update fields
-		if input.Name != "" {
+		// Track changes for audit log
+		changes := make(map[string]interface{})
+		oldValues := make(map[string]interface{})
+
+		// Update fields and track changes
+		if input.Name != "" && input.Name != account.Name {
+			oldValues["name"] = account.Name
+			changes["name"] = input.Name
 			account.Name = input.Name
 		}
-		if input.Email != "" {
+		if input.Email != "" && input.Email != account.Email {
+			oldValues["email"] = account.Email
+			changes["email"] = input.Email
 			account.Email = input.Email
 		}
-		if input.Active != nil {
+		if input.Active != nil && *input.Active != account.Active {
+			oldValues["active"] = account.Active
+			changes["active"] = *input.Active
 			account.Active = *input.Active
 		}
 
 		if err := api.Services.Storage.UpdateAccount(ctx, account); err != nil {
 			return fmt.Errorf("failed to update account: %w", err)
 		}
+
+		// Log audit event with changes
+		api.logAuditEvent(ctx, input.AccountID, "account_updated", "account", input.AccountID, map[string]interface{}{
+			"account_name": account.Name,
+			"changes":      changes,
+			"old_values":   oldValues,
+		})
 
 		*output = *account
 		return nil
@@ -640,6 +663,18 @@ func (api *API) DeleteAccount() usecase.Interactor {
 		if api.Services.Storage == nil {
 			return fmt.Errorf("storage not initialized")
 		}
+
+		// Get account info before deletion for audit log
+		account, err := api.Services.Storage.GetAccount(ctx, input.AccountID)
+		if err != nil {
+			return fmt.Errorf("failed to get account: %w", err)
+		}
+
+		// Log audit event BEFORE deletion
+		api.logAuditEvent(ctx, input.AccountID, "account_deleted", "account", input.AccountID, map[string]interface{}{
+			"account_name": account.Name,
+			"email":        account.Email,
+		})
 
 		if err := api.Services.Storage.DeleteAccount(ctx, input.AccountID); err != nil {
 			return fmt.Errorf("failed to delete account: %w", err)
@@ -875,6 +910,12 @@ func (api *API) CreateTenant() usecase.Interactor {
 			return fmt.Errorf("failed to create tenant: %w", err)
 		}
 
+		// Log audit event
+		api.logAuditEvent(ctx, input.AccountID, "tenant_created", "tenant", tenant.ID, map[string]interface{}{
+			"tenant_name": tenant.Name,
+			"active":      tenant.Active,
+		})
+
 		*output = *tenant
 		return nil
 	})
@@ -912,23 +953,43 @@ func (api *API) UpdateTenant() usecase.Interactor {
 			return fmt.Errorf("failed to get tenant: %w", err)
 		}
 
-		// Update fields
-		if input.Name != "" {
+		// Track changes for audit log
+		changes := make(map[string]interface{})
+		oldValues := make(map[string]interface{})
+
+		// Update fields and track changes
+		if input.Name != "" && input.Name != tenant.Name {
+			oldValues["name"] = tenant.Name
+			changes["name"] = input.Name
 			tenant.Name = input.Name
 		}
-		if input.Description != "" {
+		if input.Description != "" && input.Description != tenant.Description {
+			oldValues["description"] = tenant.Description
+			changes["description"] = input.Description
 			tenant.Description = input.Description
 		}
-		if input.Active != nil {
+		if input.Active != nil && *input.Active != tenant.Active {
+			oldValues["active"] = tenant.Active
+			changes["active"] = *input.Active
 			tenant.Active = *input.Active
 		}
 		if input.Config != nil {
+			oldValues["config"] = tenant.Config
+			changes["config"] = *input.Config
 			tenant.Config = *input.Config
 		}
 
 		if err := api.Services.Storage.UpdateTenant(ctx, tenant); err != nil {
 			return fmt.Errorf("failed to update tenant: %w", err)
 		}
+
+		// Log audit event with changes
+		auditDetails := map[string]interface{}{
+			"tenant_name": tenant.Name,
+			"changes":     changes,
+			"old_values":  oldValues,
+		}
+		api.logAuditEvent(ctx, input.AccountID, "tenant_updated", "tenant", input.TenantID, auditDetails)
 
 		*output = *tenant
 		return nil
@@ -961,6 +1022,17 @@ func (api *API) DeleteTenant() usecase.Interactor {
 		if api.Services.Storage == nil {
 			return fmt.Errorf("storage not initialized")
 		}
+
+		// Get tenant info before deletion for audit log
+		tenant, err := api.Services.Storage.GetTenant(ctx, input.AccountID, input.TenantID)
+		if err != nil {
+			return fmt.Errorf("failed to get tenant: %w", err)
+		}
+
+		// Log audit event BEFORE deletion
+		api.logAuditEvent(ctx, input.AccountID, "tenant_deleted", "tenant", input.TenantID, map[string]interface{}{
+			"tenant_name": tenant.Name,
+		})
 
 		if err := api.Services.Storage.DeleteTenant(ctx, input.AccountID, input.TenantID); err != nil {
 			return fmt.Errorf("failed to delete tenant: %w", err)
@@ -1286,6 +1358,21 @@ func (api *API) CreateDataset() usecase.Interactor {
 			return fmt.Errorf("failed to create dataset: %w", err)
 		}
 
+		// Get tenant info for account ID
+		tenant, err := api.Services.Storage.GetTenantByID(ctx, input.TenantID)
+		accountID := ""
+		if err == nil && tenant != nil {
+			accountID = tenant.AccountID
+		}
+
+		// Log audit event
+		api.logAuditEvent(ctx, accountID, "dataset_created", "dataset", dataset.ID, map[string]interface{}{
+			"dataset_name": dataset.Name,
+			"tenant_id":    dataset.TenantID,
+			"active":       dataset.Active,
+			"status":       dataset.Status,
+		})
+
 		*output = *dataset
 		return nil
 	})
@@ -1324,26 +1411,56 @@ func (api *API) UpdateDataset() usecase.Interactor {
 			return fmt.Errorf("dataset not found: %w", err)
 		}
 
-		// Update fields
-		if input.Name != "" {
+		// Track changes for audit log
+		changes := make(map[string]interface{})
+		oldValues := make(map[string]interface{})
+
+		// Update fields and track changes
+		if input.Name != "" && input.Name != dataset.Name {
+			oldValues["name"] = dataset.Name
+			changes["name"] = input.Name
 			dataset.Name = input.Name
 		}
-		if input.Description != "" {
+		if input.Description != "" && input.Description != dataset.Description {
+			oldValues["description"] = dataset.Description
+			changes["description"] = input.Description
 			dataset.Description = input.Description
 		}
-		if input.Active != nil {
+		if input.Active != nil && *input.Active != dataset.Active {
+			oldValues["active"] = dataset.Active
+			changes["active"] = *input.Active
 			dataset.Active = *input.Active
 		}
-		if input.Status != "" {
+		if input.Status != "" && input.Status != dataset.Status {
+			oldValues["status"] = dataset.Status
+			changes["status"] = input.Status
 			dataset.Status = input.Status
 		}
 		if input.Config != nil {
+			oldValues["config"] = dataset.Config
+			changes["config"] = *input.Config
 			dataset.Config = *input.Config
 		}
 
 		if err := api.Services.Storage.UpdateDataset(ctx, dataset); err != nil {
 			return fmt.Errorf("failed to update dataset: %w", err)
 		}
+
+		// Get tenant info for account ID
+		tenant, err := api.Services.Storage.GetTenantByID(ctx, input.TenantID)
+		accountID := ""
+		if err == nil && tenant != nil {
+			accountID = tenant.AccountID
+		}
+
+		// Log audit event with changes
+		auditDetails := map[string]interface{}{
+			"dataset_name": dataset.Name,
+			"tenant_id":    input.TenantID,
+			"changes":      changes,
+			"old_values":   oldValues,
+		}
+		api.logAuditEvent(ctx, accountID, "dataset_updated", "dataset", input.DatasetID, auditDetails)
 
 		*output = *dataset
 		return nil
@@ -1579,6 +1696,12 @@ func (api *API) UpdateUser() usecase.Interactor {
 			return fmt.Errorf("authentication service not available")
 		}
 
+		// Get existing user to track changes
+		oldUser, err := api.Services.Auth.GetUserByID(ctx, input.UserID)
+		if err != nil {
+			return fmt.Errorf("failed to get user: %w", err)
+		}
+
 		// Validate role if provided
 		if input.Role != "" {
 			validRoles := map[string]bool{
@@ -1603,9 +1726,32 @@ func (api *API) UpdateUser() usecase.Interactor {
 			return fmt.Errorf("failed to update user: %w", err)
 		}
 
-		// Log audit event
+		// Track changes for audit log
+		changes := make(map[string]interface{})
+		oldValues := make(map[string]interface{})
+
+		if input.FirstName != "" && input.FirstName != oldUser.FirstName {
+			oldValues["first_name"] = oldUser.FirstName
+			changes["first_name"] = input.FirstName
+		}
+		if input.LastName != "" && input.LastName != oldUser.LastName {
+			oldValues["last_name"] = oldUser.LastName
+			changes["last_name"] = input.LastName
+		}
+		if input.Role != "" && input.Role != oldUser.Role {
+			oldValues["role"] = oldUser.Role
+			changes["role"] = input.Role
+		}
+		if input.Active != nil && *input.Active != oldUser.Active {
+			oldValues["active"] = oldUser.Active
+			changes["active"] = *input.Active
+		}
+
+		// Log audit event with changes
 		api.logAuditEvent(ctx, user.AccountID, "user_updated", "user", user.ID, map[string]interface{}{
-			"email": user.Email,
+			"email":      user.Email,
+			"changes":    changes,
+			"old_values": oldValues,
 		})
 
 		*output = *user

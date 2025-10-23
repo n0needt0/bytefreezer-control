@@ -50,7 +50,7 @@ housekeeping:
 # Authentication and authorization
 # Note: Admin roles (system_admin, account_admin, account_readonly) are managed in the database (control_users.role)
 auth:
-  enabled: true  # Enable authentication for UI testing
+  enabled: false  # Disabled for easier browser testing
   jwt_secret: "your-jwt-secret-key-here"
   token_expiry_hours: 24
 
@@ -63,6 +63,7 @@ rate_limit:
 # Health reporting configuration
 health_reporting:
   enabled: true  # Enable health reporting (self-registration)
+  control_url: "http://localhost:8082"
   report_interval: 30  # How often to register itself (seconds)
   timeout_seconds: 10  # HTTP timeout for health operations
   register_on_startup: true  # Register service instance on startup

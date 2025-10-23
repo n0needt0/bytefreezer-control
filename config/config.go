@@ -77,10 +77,9 @@ type HousekeepingConfig struct {
 }
 
 type AuthConfig struct {
-	Enabled          bool     `yaml:"enabled"`
-	JWTSecret        string   `yaml:"jwt_secret"`
-	TokenExpiryHours int      `yaml:"token_expiry_hours"`
-	AdminUsers       []string `yaml:"admin_users"` // Deprecated: Admin roles are now in database (control_users.role)
+	Enabled          bool   `yaml:"enabled"`
+	JWTSecret        string `yaml:"jwt_secret"`
+	TokenExpiryHours int    `yaml:"token_expiry_hours"`
 }
 
 type RateLimitConfig struct {
@@ -90,10 +89,11 @@ type RateLimitConfig struct {
 }
 
 type HealthReportingConfig struct {
-	Enabled           bool `yaml:"enabled"`
-	ReportInterval    int  `yaml:"report_interval"` // Interval in seconds
-	TimeoutSeconds    int  `yaml:"timeout_seconds"`
-	RegisterOnStartup bool `yaml:"register_on_startup"`
+	Enabled           bool   `yaml:"enabled"`
+	ControlURL        string `yaml:"control_url"`
+	ReportInterval    int    `yaml:"report_interval"`    // Interval in seconds
+	TimeoutSeconds    int    `yaml:"timeout_seconds"`
+	RegisterOnStartup bool   `yaml:"register_on_startup"`
 }
 
 // LoadConfig loads configuration from file and environment variables

@@ -285,6 +285,67 @@ func (h *HealthService) GetHealthRecordsByService(serviceType string) ([]HealthR
 	return records, nil
 }
 
+// GetProxiesByAccount returns health records for bytefreezer-proxy filtered by account_id
+func (h *HealthService) GetProxiesByAccount(accountID string) ([]HealthRecord, error) {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	rows, err := h.db.Query(`
+		SELECT id, service_type, instance_id, instance_api, status,
+		       configuration, metrics, response_time_ms, last_seen, created_at, updated_at
+		FROM health_current
+		WHERE service_type = 'bytefreezer-proxy'
+		  AND configuration->>'account_id' = $1
+		ORDER BY instance_id`, accountID)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query proxy health records for account %s: %w", accountID, err)
+	}
+	defer rows.Close()
+
+	var records []HealthRecord
+	for rows.Next() {
+		var record HealthRecord
+		var configJson, metricsJson sql.NullString
+
+		err := rows.Scan(
+			&record.ID,
+			&record.ServiceType,
+			&record.InstanceID,
+			&record.InstanceAPI,
+			&record.Status,
+			&configJson,
+			&metricsJson,
+			&record.ResponseTimeMs,
+			&record.LastSeen,
+			&record.CreatedAt,
+			&record.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan proxy health record: %w", err)
+		}
+
+		// Parse JSON fields
+		if configJson.Valid {
+			if err := json.Unmarshal([]byte(configJson.String), &record.Configuration); err != nil {
+				log.Warnf("Failed to unmarshal configuration for %s:%s: %v",
+					record.ServiceType, record.InstanceID, err)
+			}
+		}
+
+		if metricsJson.Valid {
+			if err := json.Unmarshal([]byte(metricsJson.String), &record.Metrics); err != nil {
+				log.Warnf("Failed to unmarshal metrics for %s:%s: %v",
+					record.ServiceType, record.InstanceID, err)
+			}
+		}
+
+		records = append(records, record)
+	}
+
+	return records, nil
+}
+
 // PollServicesHealth polls all registered services for their health status
 func (h *HealthService) PollServicesHealth() error {
 	records, err := h.GetAllHealthRecords()

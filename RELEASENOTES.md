@@ -1,5 +1,36 @@
 # ByteFreezer Control - Release Notes
 
+## v2.4.0: Configuration Cleanup and Standardization (2025-10-23)
+
+### Breaking Changes
+- **Removed deprecated AdminUsers field**: Authentication now fully managed via database roles
+  - Removed `AdminUsers` field from `AuthConfig` struct
+  - Removed `AdminUsersCount` from API responses
+  - All admin role management is handled in `control_users.role` table
+
+### Configuration Improvements
+- **Added ControlURL to HealthReportingConfig**: Control service now properly configured for self-registration
+  - Added `control_url` field to health_reporting section in config.yaml
+  - Updated config struct to include ControlURL field
+  - Template properly generates control_url in deployed configurations
+- **Standardized configuration with AWX**: config.yaml now matches all.yml defaults
+  - Changed `auth.enabled` from `true` to `false` for easier browser testing
+  - Added `health_reporting.control_url: "http://localhost:8082"`
+  - Config structure now fully aligned with Ansible templates
+
+### Code Cleanup
+- **Removed backup files**: Deleted handlers.go.backup (outdated file)
+- **Simplified auth configuration**: Removed deprecated admin users list management
+- **Fixed config struct alignment**: All config fields now properly match YAML structure
+
+### Migration Guide
+If you have `auth.admin_users` in your config.yaml:
+- Remove the `admin_users` field - it's no longer used
+- Manage admin roles via the database using `control_users.role` column
+- Valid roles: `system_admin`, `account_admin`, `account_readonly`
+
+---
+
 ## v2.3.0: Account-Based Proxy Configuration API (2025-10-23)
 
 ### Features

@@ -97,7 +97,6 @@ type DatabaseConfigResponse struct {
 type AuthConfigResponse struct {
 	Enabled          bool `json:"enabled"`
 	TokenExpiryHours int  `json:"token_expiry_hours"`
-	AdminUsersCount  int  `json:"admin_users_count"`
 }
 
 type RateLimitConfigResponse struct {
@@ -151,7 +150,6 @@ func (api *API) GetConfig() usecase.Interactor {
 		output.Auth = AuthConfigResponse{
 			Enabled:          api.Config.Auth.Enabled,
 			TokenExpiryHours: api.Config.Auth.TokenExpiryHours,
-			AdminUsersCount:  len(api.Config.Auth.AdminUsers),
 		}
 
 		output.RateLimit = RateLimitConfigResponse{
@@ -207,7 +205,6 @@ func (api *API) UpdateConfig() usecase.Interactor {
 		output.Auth = AuthConfigResponse{
 			Enabled:          api.Config.Auth.Enabled,
 			TokenExpiryHours: api.Config.Auth.TokenExpiryHours,
-			AdminUsersCount:  len(api.Config.Auth.AdminUsers),
 		}
 
 		output.RateLimit = RateLimitConfigResponse{
@@ -2166,6 +2163,76 @@ func (api *API) GetPluginSchemas() usecase.Interactor {
 	u.SetTitle("Get Plugin Schemas")
 	u.SetDescription("Returns plugin configuration schemas from all registered proxy instances")
 	u.SetTags("plugins", "schemas")
+
+	return u
+}
+
+// ProxyResponse represents a proxy instance response
+type ProxyResponse struct {
+	InstanceID     string                 `json:"instance_id"`
+	InstanceAPI    string                 `json:"instance_api"`
+	Status         string                 `json:"status"`
+	LastSeen       string                 `json:"last_seen"`
+	Configuration  map[string]interface{} `json:"configuration"`
+	Metrics        map[string]interface{} `json:"metrics,omitempty"`
+	ResponseTimeMs int                    `json:"response_time_ms,omitempty"`
+}
+
+// ProxiesListResponse represents the proxies list response
+type ProxiesListResponse struct {
+	Proxies []ProxyResponse `json:"proxies"`
+	Count   int             `json:"count"`
+}
+
+// GetAccountProxies returns all proxy instances for a specific account
+func (api *API) GetAccountProxies() usecase.Interactor {
+	type Request struct {
+		AccountID string `path:"account_id"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input Request, output *ProxiesListResponse) error {
+		api.Services.IncrementAPIRequests()
+
+		if api.Services.HealthService == nil {
+			return fmt.Errorf("health service not available")
+		}
+
+		// Get proxies for this account
+		records, err := api.Services.HealthService.GetProxiesByAccount(input.AccountID)
+		if err != nil {
+			return fmt.Errorf("failed to get proxy health records: %w", err)
+		}
+
+		// Convert health records to proxy responses
+		proxies := make([]ProxyResponse, len(records))
+		for i, record := range records {
+			responseTimeMs := 0
+			if record.ResponseTimeMs != nil {
+				responseTimeMs = *record.ResponseTimeMs
+			}
+
+			proxies[i] = ProxyResponse{
+				InstanceID:     record.InstanceID,
+				InstanceAPI:    record.InstanceAPI,
+				Status:         record.Status,
+				LastSeen:       record.LastSeen.Format("2006-01-02T15:04:05Z07:00"),
+				Configuration:  record.Configuration,
+				Metrics:        record.Metrics,
+				ResponseTimeMs: responseTimeMs,
+			}
+		}
+
+		output.Proxies = proxies
+		output.Count = len(proxies)
+
+		log.Infof("Retrieved %d proxy instances for account %s", len(proxies), input.AccountID)
+
+		return nil
+	})
+
+	u.SetTitle("Get Account Proxies")
+	u.SetDescription("Returns all proxy instances registered to a specific account")
+	u.SetTags("proxies", "health")
 
 	return u
 }

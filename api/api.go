@@ -126,6 +126,7 @@ func (api *API) NewRouter() *web.Service {
 	service.Post("/api/v1/tenants/{tenantId}/datasets", api.CreateDataset())
 	service.Put("/api/v1/tenants/{tenantId}/datasets/{datasetId}", api.UpdateDataset())
 	service.Delete("/api/v1/tenants/{tenantId}/datasets/{datasetId}", api.DeleteDataset())
+	service.Post("/api/v1/tenants/{tenantId}/datasets/{datasetId}/test", api.TestDataset())
 
 	// User management endpoints
 	service.Get("/api/v1/users", api.ListUsers())
@@ -149,6 +150,9 @@ func (api *API) NewRouter() *web.Service {
 	service.Post("/api/v2/proxies/{instanceId}/config/applied", api.MarkProxyConfigApplied())
 	service.Get("/api/v2/proxies/{instanceId}/config/history", api.GetProxyConfigHistory())
 	service.Delete("/api/v2/proxies/{instanceId}", api.DeleteProxyInstance())
+
+	// Proxy configuration polling endpoint (returns tenants + datasets for account)
+	service.Get("/api/v2/proxy/config", api.GetProxyConfiguration())
 
 	// API documentation
 	service.Docs("/v1/docs", swgui.New)

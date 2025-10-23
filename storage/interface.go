@@ -80,6 +80,13 @@ type Dataset struct {
 	ErrorCount         int        `json:"error_count" db:"error_count"`
 	LastError          string     `json:"last_error" db:"last_error"`
 	ProcessingMetrics  string     `json:"processing_metrics" db:"processing_metrics"` // JSON
+
+	// Test status fields
+	InputTestStatus   string     `json:"input_test_status" db:"input_test_status"`     // untested, testing, active, degraded
+	InputTestMessage  string     `json:"input_test_message" db:"input_test_message"`   // why degraded
+	OutputTestStatus  string     `json:"output_test_status" db:"output_test_status"`   // untested, testing, active, degraded
+	OutputTestMessage string     `json:"output_test_message" db:"output_test_message"` // why degraded
+	LastTestedAt      *time.Time `json:"last_tested_at" db:"last_tested_at"`           // when last tested
 }
 
 // DatasetMetrics represents processing metrics for a dataset

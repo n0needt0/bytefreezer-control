@@ -130,6 +130,10 @@ func (api *API) UpsertProxyConfig() usecase.Interactor {
 			config.PluginConfigs = []map[string]interface{}{}
 		}
 
+		// Note: No validation of dataset_ids here because proxy generates plugin configs
+		// dynamically from dataset configurations and reports back what it has applied.
+		// This endpoint accepts whatever the proxy reports.
+
 		// Upsert configuration
 		err := api.Services.Storage.UpsertProxyConfig(ctx, config)
 		if err != nil {
@@ -262,6 +266,63 @@ func (api *API) DeleteProxyInstance() usecase.Interactor {
 
 	u.SetTitle("Delete Proxy Instance")
 	u.SetDescription("Deletes a proxy instance and its configuration")
+	u.SetTags("proxy-config")
+
+	return u
+}
+
+// GetProxyConfiguration returns tenants and datasets for an account (for proxy polling)
+func (api *API) GetProxyConfiguration() usecase.Interactor {
+	type getProxyConfigInput struct {
+		AccountID string `query:"account_id" required:"true" description:"Account ID"`
+	}
+
+	type tenantWithDatasets struct {
+		Tenant   storage.Tenant    `json:"tenant"`
+		Datasets []storage.Dataset `json:"datasets"`
+	}
+
+	type getProxyConfigOutput struct {
+		Tenants []tenantWithDatasets `json:"tenants"`
+		Count   int                  `json:"count"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input getProxyConfigInput, output *getProxyConfigOutput) error {
+		// Query all tenants for the account
+		tenantOpts := storage.ListOptions{Limit: 1000}
+		tenantResult, err := api.Services.Storage.ListTenants(ctx, input.AccountID, tenantOpts)
+		if err != nil {
+			log.Errorf("Failed to list tenants for account %s: %v", input.AccountID, err)
+			return usecaseStatus.Wrap(fmt.Errorf("failed to retrieve tenants"), usecaseStatus.Internal)
+		}
+
+		// For each tenant, query its datasets
+		tenantsWithDatasets := make([]tenantWithDatasets, 0, len(tenantResult.Items))
+		for _, tenant := range tenantResult.Items {
+			datasetOpts := storage.ListOptions{Limit: 1000}
+			datasetResult, err := api.Services.Storage.ListDatasets(ctx, tenant.ID, datasetOpts)
+			if err != nil {
+				log.Warnf("Failed to list datasets for tenant %s: %v", tenant.ID, err)
+				continue
+			}
+
+			tenantsWithDatasets = append(tenantsWithDatasets, tenantWithDatasets{
+				Tenant:   tenant,
+				Datasets: datasetResult.Items,
+			})
+		}
+
+		output.Tenants = tenantsWithDatasets
+		output.Count = len(tenantsWithDatasets)
+
+		log.Infof("Proxy configuration query for account %s: %d tenants, total datasets across all tenants",
+			input.AccountID, len(tenantsWithDatasets))
+
+		return nil
+	})
+
+	u.SetTitle("Get Proxy Configuration")
+	u.SetDescription("Returns all tenants and datasets for an account (used by proxy for configuration polling)")
 	u.SetTags("proxy-config")
 
 	return u

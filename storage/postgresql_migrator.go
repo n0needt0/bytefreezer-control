@@ -234,6 +234,11 @@ func (m *PostgreSQLMigrator) getAllMigrations() []Migration {
 			Name:        "cleanup_token_refresh_audit_logs",
 			Description: "Remove noisy token_refresh entries from audit logs",
 		},
+		{
+			Version:     7,
+			Name:        "add_dataset_test_status",
+			Description: "Add test status fields for tracking input/output test results",
+		},
 	}
 }
 
@@ -470,6 +475,15 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 			-- These are too noisy and were removed from logging in v2.2.1
 			DELETE FROM control_audit_log WHERE action = 'token_refresh'`
 
+	case 7:
+		return `
+			-- Add test status fields for dataset input/output testing
+			ALTER TABLE control_datasets ADD COLUMN IF NOT EXISTS input_test_status VARCHAR(50) DEFAULT 'untested';
+			ALTER TABLE control_datasets ADD COLUMN IF NOT EXISTS input_test_message TEXT;
+			ALTER TABLE control_datasets ADD COLUMN IF NOT EXISTS output_test_status VARCHAR(50) DEFAULT 'untested';
+			ALTER TABLE control_datasets ADD COLUMN IF NOT EXISTS output_test_message TEXT;
+			ALTER TABLE control_datasets ADD COLUMN IF NOT EXISTS last_tested_at TIMESTAMP WITH TIME ZONE`
+
 	default:
 		return ""
 	}
@@ -530,6 +544,15 @@ func (m *PostgreSQLMigrator) getRollbackSQL(version int) string {
 	case 6:
 		return `
 			-- No rollback for cleanup migration - deleted data cannot be restored`
+
+	case 7:
+		return `
+			-- Remove test status fields from datasets table
+			ALTER TABLE control_datasets DROP COLUMN IF EXISTS input_test_status;
+			ALTER TABLE control_datasets DROP COLUMN IF EXISTS input_test_message;
+			ALTER TABLE control_datasets DROP COLUMN IF EXISTS output_test_status;
+			ALTER TABLE control_datasets DROP COLUMN IF EXISTS output_test_message;
+			ALTER TABLE control_datasets DROP COLUMN IF EXISTS last_tested_at`
 
 	default:
 		return ""

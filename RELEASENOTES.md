@@ -1,5 +1,147 @@
 # ByteFreezer Control - Release Notes
 
+## v2.3.0: Account-Based Proxy Configuration API (2025-10-23)
+
+### Features
+
+#### New Proxy Configuration Endpoint for Account-Based Polling
+- **Account-Level Configuration API**: New endpoint `/api/v2/proxy/config?account_id={accountID}` returns all tenants and datasets for an account
+  - Single API call returns complete configuration for proxy instances
+  - Eliminates need for multiple API calls per tenant
+  - Supports multi-tenant proxy deployments
+  - Implementation: `api/proxy_config_handlers.go:285-340`
+
+#### Response Structure
+```json
+{
+  "tenants": [
+    {
+      "tenant": {
+        "id": "tenant-123",
+        "account_id": "account-456",
+        "name": "Production Tenant",
+        ...
+      },
+      "datasets": [
+        {
+          "id": "dataset-789",
+          "tenant_id": "tenant-123",
+          "name": "sflow-data",
+          "config": {
+            "source": {
+              "type": "stream",
+              "custom": {
+                "plugin_type": "sflow",
+                "port": 2066,
+                "protocol": "sflow",
+                ...
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "count": 1
+}
+```
+
+#### Dataset Source Configuration for Plugin Generation
+- **Plugin Configuration in Datasets**: Datasets now support plugin-specific configuration in `source.custom`
+  - `plugin_type`: Plugin name (e.g., "sflow", "netflow", "ipfix")
+  - Plugin-specific fields: port, protocol, data_hint, read_buffer_size, worker_count, etc.
+  - Proxy reads these fields and dynamically generates plugin configurations
+
+#### Configuration Reporting
+- **Proxy Status Tracking**: Proxy reports applied configuration back to Control for each tenant
+  - Uses existing `/api/v2/proxies/{instanceId}/config` endpoint
+  - Stores which plugins are configured for each tenant
+  - Enables dataset test endpoint to show which proxies have plugins active
+
+### Technical Details
+
+**New API Endpoint**:
+```go
+GET /api/v2/proxy/config?account_id={accountID}
+Authorization: Bearer {token}
+
+Response: ControlConfiguration with all tenants + datasets
+```
+
+**Implementation Flow**:
+1. Proxy sends account_id to Control
+2. Control queries all tenants for the account (`ListTenants`)
+3. For each tenant, Control queries all datasets (`ListDatasets`)
+4. Control returns nested structure: tenants → datasets
+5. Proxy converts datasets to plugin configurations
+6. Proxy reports applied configuration back to Control
+
+**GetProxyConfiguration Handler**:
+```go
+func (api *API) GetProxyConfiguration() usecase.Interactor {
+    // Query all tenants for account
+    tenantResult, err := api.Services.Storage.ListTenants(ctx, input.AccountID, tenantOpts)
+
+    // For each tenant, query datasets
+    for _, tenant := range tenantResult.Items {
+        datasetResult, err := api.Services.Storage.ListDatasets(ctx, tenant.ID, datasetOpts)
+        tenantsWithDatasets = append(tenantsWithDatasets, tenantWithDatasets{
+            Tenant:   tenant,
+            Datasets: datasetResult.Items,
+        })
+    }
+
+    return tenantsWithDatasets
+}
+```
+
+### Files Modified
+
+**Backend**:
+- `api/api.go` - Added `/api/v2/proxy/config` route (line 155)
+- `api/proxy_config_handlers.go` - GetProxyConfiguration handler (lines 285-340)
+- `api/proxy_config_handlers.go` - Removed dataset_id validation (line 133-135)
+
+### Deployment Notes
+
+**Impact**:
+- New endpoint is backwards compatible
+- Existing tenant-based proxy config endpoints unchanged
+- No database migration required
+- Proxy configurations now accept any plugin_configs (no validation)
+
+**Workflow Changes**:
+- Create datasets with `source.type: "stream"` and `source.custom` containing plugin config
+- Configure proxy with `account_id` instead of `tenant_id`
+- Proxy polls new endpoint and dynamically generates plugin configs
+- Proxy reports applied configuration per tenant
+
+**Dataset Configuration Example**:
+```json
+{
+  "name": "sflow-data",
+  "config": {
+    "source": {
+      "type": "stream",
+      "custom": {
+        "plugin_type": "sflow",
+        "port": 2066,
+        "protocol": "sflow",
+        "data_hint": "ndjson",
+        "read_buffer_size": 65536,
+        "worker_count": 4
+      }
+    },
+    "destination": {
+      "type": "s3",
+      "connection": {
+        "bucket": "bytefreezer-intake"
+      }
+    }
+  }
+}
+```
+
 ## v2.2.6: Migration System Registration (2025-10-21)
 
 ### Features

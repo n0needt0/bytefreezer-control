@@ -1566,6 +1566,163 @@ func (api *API) DeleteDataset() usecase.Interactor {
 	return u
 }
 
+// TestDataset tests dataset input and output configuration
+func (api *API) TestDataset() usecase.Interactor {
+	type testDatasetInput struct {
+		TenantID  string `path:"tenantId" required:"true"`
+		DatasetID string `path:"datasetId" required:"true"`
+	}
+
+	type testDatasetOutput struct {
+		Success            bool      `json:"success"`
+		InputTestStatus    string    `json:"input_test_status"`
+		InputTestMessage   string    `json:"input_test_message,omitempty"`
+		OutputTestStatus   string    `json:"output_test_status"`
+		OutputTestMessage  string    `json:"output_test_message,omitempty"`
+		LastTestedAt       time.Time `json:"last_tested_at"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input testDatasetInput, output *testDatasetOutput) error {
+		api.Services.IncrementAPIRequests()
+		api.Services.IncrementDatabaseQueries()
+
+		if api.Services.Storage == nil {
+			return fmt.Errorf("storage not initialized")
+		}
+
+		// Get dataset
+		dataset, err := api.Services.Storage.GetDataset(ctx, input.TenantID, input.DatasetID)
+		if err != nil {
+			return fmt.Errorf("failed to get dataset: %w", err)
+		}
+
+		// Initialize test statuses
+		inputStatus := "untested"
+		inputMessage := ""
+		outputStatus := "untested"
+		outputMessage := ""
+		now := time.Now()
+
+		// Test Input: Check if any proxy configuration has a plugin for this dataset
+		// This checks if the dataset is configured in any proxy's plugin configs
+		proxyConfigs, err := api.Services.Storage.ListProxyConfigs(ctx, input.TenantID)
+		if err != nil {
+			log.Warnf("Could not check proxy configs for dataset %s: %v", input.DatasetID, err)
+			inputStatus = "untested"
+			inputMessage = "Unable to check proxy configuration"
+		} else {
+			// Check if any plugin config references this dataset
+			foundInProxy := false
+			for _, proxyConfig := range proxyConfigs {
+				for _, pluginConfig := range proxyConfig.PluginConfigs {
+					if datasetID, ok := pluginConfig["dataset_id"].(string); ok && datasetID == input.DatasetID {
+						foundInProxy = true
+						// Check if config was applied
+						if proxyConfig.ConfigApplied {
+							inputStatus = "active"
+							inputMessage = fmt.Sprintf("Plugin configured in proxy %s", proxyConfig.InstanceID)
+						} else {
+							inputStatus = "untested"
+							inputMessage = "Waiting for proxy to apply configuration"
+						}
+						break
+					}
+				}
+				if foundInProxy {
+					break
+				}
+			}
+
+			if !foundInProxy {
+				inputStatus = "degraded"
+				inputMessage = "No proxy configuration found for this dataset"
+			}
+		}
+
+		// Test Output: Check S3 configuration and connectivity
+		if dataset.Config.Destination.Type == "s3" && dataset.Config.Destination.Connection.Bucket != "" {
+			conn := dataset.Config.Destination.Connection
+
+			// Extract S3 credentials
+			accessKey := conn.Credentials.AccessKey
+			secretKey := conn.Credentials.SecretKey
+			region := conn.Region
+			endpoint := conn.Endpoint
+			useSSL := conn.SSL
+
+			// Try to create S3 client and test connection
+			_, err := storage.NewS3Cleaner(
+				ctx,
+				accessKey,
+				secretKey,
+				region,
+				endpoint,
+				useSSL,
+			)
+
+			if err != nil {
+				outputStatus = "degraded"
+				outputMessage = fmt.Sprintf("Failed to create S3 client: %v", err)
+				log.Warnf("S3 test failed for dataset %s: %v", input.DatasetID, err)
+			} else {
+				// S3 client created successfully
+				outputStatus = "active"
+				outputMessage = "S3 connection successful"
+				log.Infof("S3 test passed for dataset %s", input.DatasetID)
+			}
+		} else {
+			outputStatus = "degraded"
+			outputMessage = "S3 output not configured"
+		}
+
+		// Update dataset with test results
+		dataset.InputTestStatus = inputStatus
+		dataset.InputTestMessage = inputMessage
+		dataset.OutputTestStatus = outputStatus
+		dataset.OutputTestMessage = outputMessage
+		dataset.LastTestedAt = &now
+
+		if err := api.Services.Storage.UpdateDataset(ctx, dataset); err != nil {
+			return fmt.Errorf("failed to update dataset test status: %w", err)
+		}
+
+		// Get tenant info for account ID
+		tenant, err := api.Services.Storage.GetTenantByID(ctx, input.TenantID)
+		accountID := ""
+		if err == nil && tenant != nil {
+			accountID = tenant.AccountID
+		}
+
+		// Log audit event
+		api.logAuditEvent(ctx, accountID, "dataset_tested", "dataset", input.DatasetID, map[string]interface{}{
+			"dataset_name":        dataset.Name,
+			"tenant_id":           input.TenantID,
+			"input_test_status":   inputStatus,
+			"output_test_status":  outputStatus,
+		})
+
+		// Populate output
+		output.Success = true
+		output.InputTestStatus = inputStatus
+		output.InputTestMessage = inputMessage
+		output.OutputTestStatus = outputStatus
+		output.OutputTestMessage = outputMessage
+		output.LastTestedAt = now
+
+		log.Infof("Dataset %s/%s tested - Input: %s, Output: %s",
+			input.TenantID, input.DatasetID, inputStatus, outputStatus)
+
+		return nil
+	})
+
+	u.SetTitle("Test Dataset")
+	u.SetDescription("Tests dataset input and output configuration")
+	u.SetTags("datasets")
+	u.SetExpectedErrors(usecaseStatus.NotFound)
+
+	return u
+}
+
 // User Management API handlers
 
 // ListUsers returns all users, optionally filtered by account ID

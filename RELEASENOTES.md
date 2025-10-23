@@ -2,6 +2,15 @@
 
 ## v2.4.0: Configuration Cleanup and Standardization (2025-10-23)
 
+### Critical Bug Fixes
+- **FIXED: Missing proxy configuration migration** (postgresql_migrator.go)
+  - **Impact**: Proxy configuration tracking endpoints returned 500 errors
+  - **Symptom**: "internal: failed to save proxy configuration" when proxies reported config applied
+  - **Root Cause**: Migration 004_proxy_configuration.sql existed but was not registered in getAllMigrations()
+  - **Fix**: Added migration version 8 "proxy_configuration" to migrator with full SQL
+  - **Result**: Migration now runs automatically on Control restart, creating proxy_instances tables and functions
+  - **Auto-applies**: Yes - restart Control service to apply migration
+
 ### Breaking Changes
 - **Removed deprecated AdminUsers field**: Authentication now fully managed via database roles
   - Removed `AdminUsers` field from `AuthConfig` struct

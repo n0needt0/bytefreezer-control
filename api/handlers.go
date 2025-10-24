@@ -1636,8 +1636,9 @@ func (api *API) TestDataset() usecase.Interactor {
 			}
 		}
 
-		// Test Output: Check S3 configuration and connectivity
-		if dataset.Config.Destination.Type == "s3" && dataset.Config.Destination.Connection.Bucket != "" {
+		// Test Output: Check S3/Minio configuration and connectivity
+		destType := dataset.Config.Destination.Type
+		if (destType == "s3" || destType == "minio") && dataset.Config.Destination.Connection.Bucket != "" {
 			conn := dataset.Config.Destination.Connection
 
 			// Extract S3 credentials

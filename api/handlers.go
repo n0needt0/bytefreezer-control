@@ -1601,15 +1601,29 @@ func (api *API) TestDataset() usecase.Interactor {
 		now := time.Now()
 
 		// Test Input: Check if any proxy configuration has a plugin for this dataset
-		// This checks if the dataset is configured in any proxy's plugin configs
+		// AND verify the proxy is actually running via health service
 		proxyConfigs, err := api.Services.Storage.ListProxyConfigs(ctx, input.TenantID)
 		if err != nil {
 			log.Warnf("Could not check proxy configs for dataset %s: %v", input.DatasetID, err)
 			inputStatus = "untested"
 			inputMessage = "Unable to check proxy configuration"
 		} else {
+			// Get all running proxies from health service
+			runningProxies := make(map[string]bool)
+			if api.Services.HealthService != nil {
+				healthRecords, err := api.Services.HealthService.GetHealthRecordsByService("bytefreezer-proxy")
+				if err == nil {
+					for _, record := range healthRecords {
+						if record.Status == "Healthy" || record.Status == "Active" {
+							runningProxies[record.InstanceID] = true
+						}
+					}
+				}
+			}
+
 			// Check if any plugin config references this dataset
 			foundInProxy := false
+			var proxyInstanceID string
 			for _, proxyConfig := range proxyConfigs {
 				for _, pluginConfig := range proxyConfig.PluginConfigs {
 					// Check dataset_id in the nested config object
@@ -1622,13 +1636,18 @@ func (api *API) TestDataset() usecase.Interactor {
 
 					if datasetID == input.DatasetID {
 						foundInProxy = true
-						// Check if config was applied
-						if proxyConfig.ConfigApplied {
-							inputStatus = "active"
-							inputMessage = fmt.Sprintf("Plugin configured in proxy %s", proxyConfig.InstanceID)
-						} else {
+						proxyInstanceID = proxyConfig.InstanceID
+
+						// Check if config was applied AND proxy is running
+						if !proxyConfig.ConfigApplied {
 							inputStatus = "untested"
 							inputMessage = "Waiting for proxy to apply configuration"
+						} else if !runningProxies[proxyInstanceID] {
+							inputStatus = "degraded"
+							inputMessage = fmt.Sprintf("Proxy %s is configured but not running/healthy", proxyInstanceID)
+						} else {
+							inputStatus = "active"
+							inputMessage = fmt.Sprintf("Plugin configured and proxy %s is running", proxyInstanceID)
 						}
 						break
 					}
@@ -1644,7 +1663,7 @@ func (api *API) TestDataset() usecase.Interactor {
 			}
 		}
 
-		// Test Output: Check S3/Minio configuration and connectivity
+		// Test Output: Check S3/Minio configuration and actually write test data
 		destType := dataset.Config.Destination.Type
 		if (destType == "s3" || destType == "minio") && dataset.Config.Destination.Connection.Bucket != "" {
 			conn := dataset.Config.Destination.Connection
@@ -1655,9 +1674,10 @@ func (api *API) TestDataset() usecase.Interactor {
 			region := conn.Region
 			endpoint := conn.Endpoint
 			useSSL := conn.SSL
+			bucket := conn.Bucket
 
-			// Try to create S3 client and test connection
-			_, err := storage.NewS3Cleaner(
+			// Try to create S3 client
+			s3Cleaner, err := storage.NewS3Cleaner(
 				ctx,
 				accessKey,
 				secretKey,
@@ -1669,12 +1689,19 @@ func (api *API) TestDataset() usecase.Interactor {
 			if err != nil {
 				outputStatus = "degraded"
 				outputMessage = fmt.Sprintf("Failed to create S3 client: %v", err)
-				log.Warnf("S3 test failed for dataset %s: %v", input.DatasetID, err)
+				log.Warnf("S3 client creation failed for dataset %s: %v", input.DatasetID, err)
 			} else {
-				// S3 client created successfully
-				outputStatus = "active"
-				outputMessage = "S3 connection successful"
-				log.Infof("S3 test passed for dataset %s", input.DatasetID)
+				// Actually test writing to the bucket
+				err = s3Cleaner.TestWrite(ctx, bucket)
+				if err != nil {
+					outputStatus = "degraded"
+					outputMessage = fmt.Sprintf("Failed to write test data to bucket: %v", err)
+					log.Warnf("S3 write test failed for dataset %s bucket %s: %v", input.DatasetID, bucket, err)
+				} else {
+					outputStatus = "active"
+					outputMessage = "S3 connection successful and write test passed"
+					log.Infof("S3 write test passed for dataset %s bucket %s", input.DatasetID, bucket)
+				}
 			}
 		} else {
 			outputStatus = "degraded"

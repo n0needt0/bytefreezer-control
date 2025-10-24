@@ -1,9 +1,11 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -207,4 +209,27 @@ func GetS3ConfigFromDataset(dataset *Dataset) (bucket, region, endpoint, accessK
 	}
 
 	return bucket, region, endpoint, accessKey, secretKey, useSSL, nil
+}
+
+// TestWrite tests the ability to write to an S3 bucket by creating a small test file.
+// Does NOT delete the file as delete permissions may not be granted.
+// Uses timestamp-based filename to avoid conflicts.
+func (s *S3Cleaner) TestWrite(ctx context.Context, bucket string) error {
+	// Use timestamp to create unique filename
+	timestamp := time.Now().UnixNano()
+	testKey := fmt.Sprintf("test-%d.txt", timestamp)
+	testData := []byte("bytefreezer")
+
+	// Try to write test file
+	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(testKey),
+		Body:   bytes.NewReader(testData),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to write test object: %w", err)
+	}
+
+	log.Debugf("Successfully wrote test file %s to bucket %s", testKey, bucket)
+	return nil
 }

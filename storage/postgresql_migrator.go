@@ -244,6 +244,11 @@ func (m *PostgreSQLMigrator) getAllMigrations() []Migration {
 			Name:        "proxy_configuration",
 			Description: "Add proxy instance configuration tracking tables and functions",
 		},
+		{
+			Version:     9,
+			Name:        "dataset_metrics_table",
+			Description: "Create dedicated dataset_metrics table and remove processing_metrics column",
+		},
 	}
 }
 
@@ -686,6 +691,44 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 			END;
 			$$ LANGUAGE plpgsql;`
 
+	case 9:
+		return `
+			-- Migration 009: Create dataset_metrics table and remove processing_metrics column
+			-- Create dedicated dataset_metrics table for time-series metrics data
+
+			-- Table for dataset metrics (time-series data)
+			CREATE TABLE IF NOT EXISTS dataset_metrics (
+				id BIGSERIAL PRIMARY KEY,
+				tenant_id VARCHAR(12) NOT NULL,
+				dataset_id VARCHAR(12) NOT NULL,
+				recorded_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+				total_records BIGINT DEFAULT 0,
+				processed_records BIGINT DEFAULT 0,
+				error_records BIGINT DEFAULT 0,
+				skipped_records BIGINT DEFAULT 0,
+				processing_rate_per_sec DOUBLE PRECISION DEFAULT 0,
+				avg_latency_ms DOUBLE PRECISION DEFAULT 0,
+				error_rate DOUBLE PRECISION DEFAULT 0,
+				custom_metrics JSONB DEFAULT '{}'::jsonb,
+				-- Time-series bucketing for efficient aggregation
+				hour_bucket TIMESTAMP WITH TIME ZONE,
+				day_bucket DATE,
+				FOREIGN KEY (tenant_id) REFERENCES control_tenants(id) ON DELETE CASCADE
+			);
+
+			-- Indexes for efficient time-series queries
+			CREATE INDEX IF NOT EXISTS idx_dataset_metrics_tenant_dataset ON dataset_metrics(tenant_id, dataset_id);
+			CREATE INDEX IF NOT EXISTS idx_dataset_metrics_recorded_at ON dataset_metrics(recorded_at DESC);
+			CREATE INDEX IF NOT EXISTS idx_dataset_metrics_hour_bucket ON dataset_metrics(hour_bucket DESC);
+			CREATE INDEX IF NOT EXISTS idx_dataset_metrics_day_bucket ON dataset_metrics(day_bucket DESC);
+			CREATE INDEX IF NOT EXISTS idx_dataset_metrics_tenant_dataset_time ON dataset_metrics(tenant_id, dataset_id, recorded_at DESC);
+
+			-- Drop the GIN index on processing_metrics before dropping the column
+			DROP INDEX IF EXISTS idx_control_datasets_metrics_gin;
+
+			-- Remove the processing_metrics column completely
+			ALTER TABLE control_datasets DROP COLUMN IF EXISTS processing_metrics;`
+
 	default:
 		return ""
 	}
@@ -755,6 +798,17 @@ func (m *PostgreSQLMigrator) getRollbackSQL(version int) string {
 			ALTER TABLE control_datasets DROP COLUMN IF EXISTS output_test_status;
 			ALTER TABLE control_datasets DROP COLUMN IF EXISTS output_test_message;
 			ALTER TABLE control_datasets DROP COLUMN IF EXISTS last_tested_at`
+
+	case 9:
+		return `
+			-- Rollback migration 009: Drop dataset_metrics table and restore processing_metrics column
+			DROP TABLE IF EXISTS dataset_metrics CASCADE;
+
+			-- Recreate the processing_metrics column
+			ALTER TABLE control_datasets ADD COLUMN IF NOT EXISTS processing_metrics JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+			-- Recreate the GIN index on processing_metrics
+			CREATE INDEX IF NOT EXISTS idx_control_datasets_metrics_gin ON control_datasets USING gin(processing_metrics);`
 
 	default:
 		return ""

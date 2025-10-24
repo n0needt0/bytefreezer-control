@@ -1612,7 +1612,15 @@ func (api *API) TestDataset() usecase.Interactor {
 			foundInProxy := false
 			for _, proxyConfig := range proxyConfigs {
 				for _, pluginConfig := range proxyConfig.PluginConfigs {
-					if datasetID, ok := pluginConfig["dataset_id"].(string); ok && datasetID == input.DatasetID {
+					// Check dataset_id in the nested config object
+					var datasetID string
+					if config, ok := pluginConfig["config"].(map[string]interface{}); ok {
+						if id, ok := config["dataset_id"].(string); ok {
+							datasetID = id
+						}
+					}
+
+					if datasetID == input.DatasetID {
 						foundInProxy = true
 						// Check if config was applied
 						if proxyConfig.ConfigApplied {
@@ -2212,12 +2220,45 @@ func (api *API) GetAccountProxies() usecase.Interactor {
 				responseTimeMs = *record.ResponseTimeMs
 			}
 
+			// Enrich configuration with plugin data from proxy_instances table
+			configuration := record.Configuration
+			if configuration == nil {
+				configuration = make(map[string]interface{})
+			}
+
+			// Get all tenants for this account
+			tenantsResult, err := api.Services.Storage.ListTenants(ctx, input.AccountID, storage.ListOptions{})
+			if err == nil && tenantsResult != nil {
+				// Collect all plugin configs across all tenants for this proxy
+				allPluginConfigs := []map[string]interface{}{}
+
+				for _, tenant := range tenantsResult.Items {
+					proxyConfigs, err := api.Services.Storage.ListProxyConfigs(ctx, tenant.ID)
+					if err == nil {
+						for _, pc := range proxyConfigs {
+							if pc.InstanceID == record.InstanceID {
+								// Add this proxy's plugin configs
+								allPluginConfigs = append(allPluginConfigs, pc.PluginConfigs...)
+							}
+						}
+					}
+				}
+
+				// Add plugins to configuration
+				if len(allPluginConfigs) > 0 {
+					configuration["plugins"] = map[string]interface{}{
+						"total_plugins":  len(allPluginConfigs),
+						"plugin_details": allPluginConfigs,
+					}
+				}
+			}
+
 			proxies[i] = ProxyResponse{
 				InstanceID:     record.InstanceID,
 				InstanceAPI:    record.InstanceAPI,
 				Status:         record.Status,
 				LastSeen:       record.LastSeen.Format("2006-01-02T15:04:05Z07:00"),
-				Configuration:  record.Configuration,
+				Configuration:  configuration,
 				Metrics:        record.Metrics,
 				ResponseTimeMs: responseTimeMs,
 			}

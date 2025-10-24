@@ -542,21 +542,16 @@ func (p *PostgreSQLStorage) CreateDataset(ctx context.Context, dataset *Dataset)
 		return fmt.Errorf("failed to marshal dataset config: %w", err)
 	}
 
-	metricsJSON, err := json.Marshal(dataset.ProcessingMetrics)
-	if err != nil {
-		return fmt.Errorf("failed to marshal processing metrics: %w", err)
-	}
-
 	query := `
 		INSERT INTO control_datasets (id, tenant_id, name, display_name, description, active, status, created_at, updated_at,
-			config, records_processed, last_processed_at, error_count, last_error, processing_metrics)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`
+			config, records_processed, last_processed_at, error_count, last_error)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
 
 	_, err = p.db.ExecContext(ctx, query,
 		dataset.ID, dataset.TenantID, dataset.Name, dataset.DisplayName, dataset.Description, dataset.Active,
 		dataset.Status, dataset.CreatedAt, dataset.UpdatedAt, configJSON,
 		dataset.RecordsProcessed, dataset.LastProcessedAt, dataset.ErrorCount,
-		dataset.LastError, metricsJSON)
+		dataset.LastError)
 
 	if err != nil {
 		return fmt.Errorf("failed to create dataset: %w", err)
@@ -568,18 +563,18 @@ func (p *PostgreSQLStorage) CreateDataset(ctx context.Context, dataset *Dataset)
 func (p *PostgreSQLStorage) GetDataset(ctx context.Context, tenantID, datasetID string) (*Dataset, error) {
 	query := `
 		SELECT id, tenant_id, name, display_name, description, active, status, created_at, updated_at,
-			config, records_processed, last_processed_at, error_count, last_error, processing_metrics
+			config, records_processed, last_processed_at, error_count, last_error
 		FROM control_datasets WHERE tenant_id = $1 AND id = $2`
 
 	var dataset Dataset
-	var configJSON, metricsJSON []byte
+	var configJSON []byte
 	var lastError sql.NullString
 
 	err := p.db.QueryRowContext(ctx, query, tenantID, datasetID).Scan(
 		&dataset.ID, &dataset.TenantID, &dataset.Name, &dataset.DisplayName, &dataset.Description,
 		&dataset.Active, &dataset.Status, &dataset.CreatedAt, &dataset.UpdatedAt,
 		&configJSON, &dataset.RecordsProcessed, &dataset.LastProcessedAt,
-		&dataset.ErrorCount, &lastError, &metricsJSON)
+		&dataset.ErrorCount, &lastError)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -599,11 +594,6 @@ func (p *PostgreSQLStorage) GetDataset(ctx context.Context, tenantID, datasetID 
 		return nil, fmt.Errorf("failed to unmarshal dataset config: %w", err)
 	}
 
-	// ProcessingMetrics is stored as JSON string, not object
-	if len(metricsJSON) > 0 {
-		dataset.ProcessingMetrics = string(metricsJSON)
-	}
-
 	return &dataset, nil
 }
 
@@ -615,23 +605,18 @@ func (p *PostgreSQLStorage) UpdateDataset(ctx context.Context, dataset *Dataset)
 		return fmt.Errorf("failed to marshal dataset config: %w", err)
 	}
 
-	metricsJSON, err := json.Marshal(dataset.ProcessingMetrics)
-	if err != nil {
-		return fmt.Errorf("failed to marshal processing metrics: %w", err)
-	}
-
 	query := `
-		UPDATE control_datasets 
+		UPDATE control_datasets
 		SET name = $1, description = $2, active = $3, status = $4, updated_at = $5,
-			config = $6, records_processed = $7, last_processed_at = $8, 
-			error_count = $9, last_error = $10, processing_metrics = $11
-		WHERE tenant_id = $12 AND id = $13`
+			config = $6, records_processed = $7, last_processed_at = $8,
+			error_count = $9, last_error = $10
+		WHERE tenant_id = $11 AND id = $12`
 
 	result, err := p.db.ExecContext(ctx, query,
 		dataset.Name, dataset.Description, dataset.Active, dataset.Status,
 		dataset.UpdatedAt, configJSON, dataset.RecordsProcessed,
 		dataset.LastProcessedAt, dataset.ErrorCount, dataset.LastError,
-		metricsJSON, dataset.TenantID, dataset.ID)
+		dataset.TenantID, dataset.ID)
 
 	if err != nil {
 		return fmt.Errorf("failed to update dataset: %w", err)
@@ -711,9 +696,9 @@ func (p *PostgreSQLStorage) DeleteDataset(ctx context.Context, tenantID, dataset
 func (p *PostgreSQLStorage) ListDatasets(ctx context.Context, tenantID string, opts ListOptions) (*ListResult[Dataset], error) {
 	query := `
 		SELECT id, tenant_id, name, display_name, description, active, status, created_at, updated_at,
-			config, records_processed, last_processed_at, error_count, last_error, processing_metrics
+			config, records_processed, last_processed_at, error_count, last_error
 		FROM control_datasets WHERE tenant_id = $1`
-	
+
 	args := []interface{}{tenantID}
 	argIndex := 2
 
@@ -741,14 +726,14 @@ func (p *PostgreSQLStorage) ListDatasets(ctx context.Context, tenantID string, o
 	var datasets []Dataset
 	for rows.Next() {
 		var dataset Dataset
-		var configJSON, metricsJSON []byte
+		var configJSON []byte
 		var lastError sql.NullString
 
 		err := rows.Scan(
 			&dataset.ID, &dataset.TenantID, &dataset.Name, &dataset.DisplayName, &dataset.Description,
 			&dataset.Active, &dataset.Status, &dataset.CreatedAt, &dataset.UpdatedAt,
 			&configJSON, &dataset.RecordsProcessed, &dataset.LastProcessedAt,
-			&dataset.ErrorCount, &lastError, &metricsJSON)
+			&dataset.ErrorCount, &lastError)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan dataset: %w", err)
 		}
@@ -759,10 +744,6 @@ func (p *PostgreSQLStorage) ListDatasets(ctx context.Context, tenantID string, o
 
 		if err := json.Unmarshal(configJSON, &dataset.Config); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal dataset config: %w", err)
-		}
-
-		if len(metricsJSON) > 0 {
-			dataset.ProcessingMetrics = string(metricsJSON)
 		}
 
 		datasets = append(datasets, dataset)
@@ -793,7 +774,7 @@ func (p *PostgreSQLStorage) ListDatasets(ctx context.Context, tenantID string, o
 func (p *PostgreSQLStorage) ListAllDatasets(ctx context.Context, opts ListOptions) (*ListResult[Dataset], error) {
 	query := `
 		SELECT id, tenant_id, name, display_name, description, active, status, created_at, updated_at,
-			config, records_processed, last_processed_at, error_count, last_error, processing_metrics
+			config, records_processed, last_processed_at, error_count, last_error
 		FROM control_datasets WHERE 1=1`
 
 	args := []interface{}{}
@@ -825,14 +806,14 @@ func (p *PostgreSQLStorage) ListAllDatasets(ctx context.Context, opts ListOption
 	var datasets []Dataset
 	for rows.Next() {
 		var dataset Dataset
-		var configJSON, metricsJSON []byte
+		var configJSON []byte
 		var lastError sql.NullString
 
 		err := rows.Scan(
 			&dataset.ID, &dataset.TenantID, &dataset.Name, &dataset.DisplayName, &dataset.Description,
 			&dataset.Active, &dataset.Status, &dataset.CreatedAt, &dataset.UpdatedAt,
 			&configJSON, &dataset.RecordsProcessed, &dataset.LastProcessedAt,
-			&dataset.ErrorCount, &lastError, &metricsJSON)
+			&dataset.ErrorCount, &lastError)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan dataset: %w", err)
 		}
@@ -843,10 +824,6 @@ func (p *PostgreSQLStorage) ListAllDatasets(ctx context.Context, opts ListOption
 
 		if err := json.Unmarshal(configJSON, &dataset.Config); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal dataset config: %w", err)
-		}
-
-		if len(metricsJSON) > 0 {
-			dataset.ProcessingMetrics = string(metricsJSON)
 		}
 
 		datasets = append(datasets, dataset)
@@ -877,7 +854,7 @@ func (p *PostgreSQLStorage) ListAllDatasets(ctx context.Context, opts ListOption
 func (p *PostgreSQLStorage) FindDatasetsByStatus(ctx context.Context, tenantID, status string) ([]*Dataset, error) {
 	query := `
 		SELECT id, tenant_id, name, display_name, description, active, status, created_at, updated_at,
-			config, records_processed, last_processed_at, error_count, last_error, processing_metrics
+			config, records_processed, last_processed_at, error_count, last_error
 		FROM control_datasets WHERE tenant_id = $1 AND status = $2`
 
 	return p.queryDatasets(ctx, query, tenantID, status)
@@ -886,7 +863,7 @@ func (p *PostgreSQLStorage) FindDatasetsByStatus(ctx context.Context, tenantID, 
 func (p *PostgreSQLStorage) FindDatasetsBySourceType(ctx context.Context, tenantID, sourceType string) ([]*Dataset, error) {
 	query := `
 		SELECT id, tenant_id, name, display_name, description, active, status, created_at, updated_at,
-			config, records_processed, last_processed_at, error_count, last_error, processing_metrics
+			config, records_processed, last_processed_at, error_count, last_error
 		FROM control_datasets
 		WHERE tenant_id = $1 AND config->>'source'->>'type' = $2`
 
@@ -903,13 +880,13 @@ func (p *PostgreSQLStorage) queryDatasets(ctx context.Context, query string, arg
 	var datasets []*Dataset
 	for rows.Next() {
 		var dataset Dataset
-		var configJSON, metricsJSON []byte
+		var configJSON []byte
 
 		err := rows.Scan(
 			&dataset.ID, &dataset.TenantID, &dataset.Name, &dataset.DisplayName, &dataset.Description,
 			&dataset.Active, &dataset.Status, &dataset.CreatedAt, &dataset.UpdatedAt,
 			&configJSON, &dataset.RecordsProcessed, &dataset.LastProcessedAt,
-			&dataset.ErrorCount, &dataset.LastError, &metricsJSON)
+			&dataset.ErrorCount, &dataset.LastError)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan dataset: %w", err)
 		}
@@ -918,63 +895,10 @@ func (p *PostgreSQLStorage) queryDatasets(ctx context.Context, query string, arg
 			return nil, fmt.Errorf("failed to unmarshal dataset config: %w", err)
 		}
 
-		if len(metricsJSON) > 0 {
-			if err := json.Unmarshal(metricsJSON, &dataset.ProcessingMetrics); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal processing metrics: %w", err)
-			}
-		}
-
 		datasets = append(datasets, &dataset)
 	}
 
 	return datasets, nil
-}
-
-func (p *PostgreSQLStorage) GetDatasetMetrics(ctx context.Context, tenantID, datasetID string) (*DatasetMetrics, error) {
-	query := `SELECT processing_metrics FROM control_datasets WHERE tenant_id = $1 AND id = $2`
-
-	var metricsJSON []byte
-	err := p.db.QueryRowContext(ctx, query, tenantID, datasetID).Scan(&metricsJSON)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("dataset not found: %s/%s", tenantID, datasetID)
-		}
-		return nil, fmt.Errorf("failed to get dataset metrics: %w", err)
-	}
-
-	var metrics DatasetMetrics
-	if len(metricsJSON) > 0 {
-		if err := json.Unmarshal(metricsJSON, &metrics); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal dataset metrics: %w", err)
-		}
-	}
-
-	return &metrics, nil
-}
-
-func (p *PostgreSQLStorage) UpdateDatasetMetrics(ctx context.Context, tenantID, datasetID string, metrics *DatasetMetrics) error {
-	metricsJSON, err := json.Marshal(metrics)
-	if err != nil {
-		return fmt.Errorf("failed to marshal dataset metrics: %w", err)
-	}
-
-	query := `UPDATE control_datasets SET processing_metrics = $1, updated_at = $2 WHERE tenant_id = $3 AND id = $4`
-
-	result, err := p.db.ExecContext(ctx, query, metricsJSON, time.Now(), tenantID, datasetID)
-	if err != nil {
-		return fmt.Errorf("failed to update dataset metrics: %w", err)
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
-	}
-
-	if rowsAffected == 0 {
-		return fmt.Errorf("dataset not found: %s/%s", tenantID, datasetID)
-	}
-
-	return nil
 }
 
 // Utility operations

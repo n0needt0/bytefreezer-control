@@ -79,7 +79,6 @@ type Dataset struct {
 	LastProcessedAt    *time.Time `json:"last_processed_at" db:"last_processed_at"`
 	ErrorCount         int        `json:"error_count" db:"error_count"`
 	LastError          string     `json:"last_error" db:"last_error"`
-	ProcessingMetrics  string     `json:"processing_metrics" db:"processing_metrics"` // JSON
 
 	// Test status fields
 	InputTestStatus   string     `json:"input_test_status" db:"input_test_status"`     // untested, testing, active, degraded
@@ -183,8 +182,6 @@ type Storage interface {
 	// Advanced dataset queries
 	FindDatasetsByStatus(ctx context.Context, tenantID, status string) ([]*Dataset, error)
 	FindDatasetsBySourceType(ctx context.Context, tenantID, sourceType string) ([]*Dataset, error)
-	GetDatasetMetrics(ctx context.Context, tenantID, datasetID string) (*DatasetMetrics, error)
-	UpdateDatasetMetrics(ctx context.Context, tenantID, datasetID string, metrics *DatasetMetrics) error
 
 	// API Key operations
 	CreateAPIKey(ctx context.Context, apiKey *APIKey) error

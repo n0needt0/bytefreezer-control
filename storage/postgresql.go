@@ -563,18 +563,23 @@ func (p *PostgreSQLStorage) CreateDataset(ctx context.Context, dataset *Dataset)
 func (p *PostgreSQLStorage) GetDataset(ctx context.Context, tenantID, datasetID string) (*Dataset, error) {
 	query := `
 		SELECT id, tenant_id, name, display_name, description, active, status, created_at, updated_at,
-			config, records_processed, last_processed_at, error_count, last_error
+			config, records_processed, last_processed_at, error_count, last_error,
+			input_test_status, input_test_message, output_test_status, output_test_message, last_tested_at
 		FROM control_datasets WHERE tenant_id = $1 AND id = $2`
 
 	var dataset Dataset
 	var configJSON []byte
 	var lastError sql.NullString
+	var inputTestMessage sql.NullString
+	var outputTestMessage sql.NullString
 
 	err := p.db.QueryRowContext(ctx, query, tenantID, datasetID).Scan(
 		&dataset.ID, &dataset.TenantID, &dataset.Name, &dataset.DisplayName, &dataset.Description,
 		&dataset.Active, &dataset.Status, &dataset.CreatedAt, &dataset.UpdatedAt,
 		&configJSON, &dataset.RecordsProcessed, &dataset.LastProcessedAt,
-		&dataset.ErrorCount, &lastError)
+		&dataset.ErrorCount, &lastError,
+		&dataset.InputTestStatus, &inputTestMessage, &dataset.OutputTestStatus,
+		&outputTestMessage, &dataset.LastTestedAt)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -588,6 +593,18 @@ func (p *PostgreSQLStorage) GetDataset(ctx context.Context, tenantID, datasetID 
 		dataset.LastError = lastError.String
 	} else {
 		dataset.LastError = ""
+	}
+
+	// Handle NULL test messages
+	if inputTestMessage.Valid {
+		dataset.InputTestMessage = inputTestMessage.String
+	} else {
+		dataset.InputTestMessage = ""
+	}
+	if outputTestMessage.Valid {
+		dataset.OutputTestMessage = outputTestMessage.String
+	} else {
+		dataset.OutputTestMessage = ""
 	}
 
 	if err := json.Unmarshal(configJSON, &dataset.Config); err != nil {
@@ -609,13 +626,17 @@ func (p *PostgreSQLStorage) UpdateDataset(ctx context.Context, dataset *Dataset)
 		UPDATE control_datasets
 		SET name = $1, description = $2, active = $3, status = $4, updated_at = $5,
 			config = $6, records_processed = $7, last_processed_at = $8,
-			error_count = $9, last_error = $10
-		WHERE tenant_id = $11 AND id = $12`
+			error_count = $9, last_error = $10,
+			input_test_status = $11, input_test_message = $12,
+			output_test_status = $13, output_test_message = $14, last_tested_at = $15
+		WHERE tenant_id = $16 AND id = $17`
 
 	result, err := p.db.ExecContext(ctx, query,
 		dataset.Name, dataset.Description, dataset.Active, dataset.Status,
 		dataset.UpdatedAt, configJSON, dataset.RecordsProcessed,
 		dataset.LastProcessedAt, dataset.ErrorCount, dataset.LastError,
+		dataset.InputTestStatus, dataset.InputTestMessage,
+		dataset.OutputTestStatus, dataset.OutputTestMessage, dataset.LastTestedAt,
 		dataset.TenantID, dataset.ID)
 
 	if err != nil {
@@ -696,7 +717,8 @@ func (p *PostgreSQLStorage) DeleteDataset(ctx context.Context, tenantID, dataset
 func (p *PostgreSQLStorage) ListDatasets(ctx context.Context, tenantID string, opts ListOptions) (*ListResult[Dataset], error) {
 	query := `
 		SELECT id, tenant_id, name, display_name, description, active, status, created_at, updated_at,
-			config, records_processed, last_processed_at, error_count, last_error
+			config, records_processed, last_processed_at, error_count, last_error,
+			input_test_status, input_test_message, output_test_status, output_test_message, last_tested_at
 		FROM control_datasets WHERE tenant_id = $1`
 
 	args := []interface{}{tenantID}
@@ -728,18 +750,29 @@ func (p *PostgreSQLStorage) ListDatasets(ctx context.Context, tenantID string, o
 		var dataset Dataset
 		var configJSON []byte
 		var lastError sql.NullString
+		var inputTestMessage sql.NullString
+		var outputTestMessage sql.NullString
 
 		err := rows.Scan(
 			&dataset.ID, &dataset.TenantID, &dataset.Name, &dataset.DisplayName, &dataset.Description,
 			&dataset.Active, &dataset.Status, &dataset.CreatedAt, &dataset.UpdatedAt,
 			&configJSON, &dataset.RecordsProcessed, &dataset.LastProcessedAt,
-			&dataset.ErrorCount, &lastError)
+			&dataset.ErrorCount, &lastError,
+			&dataset.InputTestStatus, &inputTestMessage, &dataset.OutputTestStatus,
+			&outputTestMessage, &dataset.LastTestedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan dataset: %w", err)
 		}
 
 		if lastError.Valid {
 			dataset.LastError = lastError.String
+		}
+
+		if inputTestMessage.Valid {
+			dataset.InputTestMessage = inputTestMessage.String
+		}
+		if outputTestMessage.Valid {
+			dataset.OutputTestMessage = outputTestMessage.String
 		}
 
 		if err := json.Unmarshal(configJSON, &dataset.Config); err != nil {
@@ -774,7 +807,8 @@ func (p *PostgreSQLStorage) ListDatasets(ctx context.Context, tenantID string, o
 func (p *PostgreSQLStorage) ListAllDatasets(ctx context.Context, opts ListOptions) (*ListResult[Dataset], error) {
 	query := `
 		SELECT id, tenant_id, name, display_name, description, active, status, created_at, updated_at,
-			config, records_processed, last_processed_at, error_count, last_error
+			config, records_processed, last_processed_at, error_count, last_error,
+			input_test_status, input_test_message, output_test_status, output_test_message, last_tested_at
 		FROM control_datasets WHERE 1=1`
 
 	args := []interface{}{}
@@ -808,18 +842,29 @@ func (p *PostgreSQLStorage) ListAllDatasets(ctx context.Context, opts ListOption
 		var dataset Dataset
 		var configJSON []byte
 		var lastError sql.NullString
+		var inputTestMessage sql.NullString
+		var outputTestMessage sql.NullString
 
 		err := rows.Scan(
 			&dataset.ID, &dataset.TenantID, &dataset.Name, &dataset.DisplayName, &dataset.Description,
 			&dataset.Active, &dataset.Status, &dataset.CreatedAt, &dataset.UpdatedAt,
 			&configJSON, &dataset.RecordsProcessed, &dataset.LastProcessedAt,
-			&dataset.ErrorCount, &lastError)
+			&dataset.ErrorCount, &lastError,
+			&dataset.InputTestStatus, &inputTestMessage, &dataset.OutputTestStatus,
+			&outputTestMessage, &dataset.LastTestedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan dataset: %w", err)
 		}
 
 		if lastError.Valid {
 			dataset.LastError = lastError.String
+		}
+
+		if inputTestMessage.Valid {
+			dataset.InputTestMessage = inputTestMessage.String
+		}
+		if outputTestMessage.Valid {
+			dataset.OutputTestMessage = outputTestMessage.String
 		}
 
 		if err := json.Unmarshal(configJSON, &dataset.Config); err != nil {
@@ -854,7 +899,8 @@ func (p *PostgreSQLStorage) ListAllDatasets(ctx context.Context, opts ListOption
 func (p *PostgreSQLStorage) FindDatasetsByStatus(ctx context.Context, tenantID, status string) ([]*Dataset, error) {
 	query := `
 		SELECT id, tenant_id, name, display_name, description, active, status, created_at, updated_at,
-			config, records_processed, last_processed_at, error_count, last_error
+			config, records_processed, last_processed_at, error_count, last_error,
+			input_test_status, input_test_message, output_test_status, output_test_message, last_tested_at
 		FROM control_datasets WHERE tenant_id = $1 AND status = $2`
 
 	return p.queryDatasets(ctx, query, tenantID, status)
@@ -863,7 +909,8 @@ func (p *PostgreSQLStorage) FindDatasetsByStatus(ctx context.Context, tenantID, 
 func (p *PostgreSQLStorage) FindDatasetsBySourceType(ctx context.Context, tenantID, sourceType string) ([]*Dataset, error) {
 	query := `
 		SELECT id, tenant_id, name, display_name, description, active, status, created_at, updated_at,
-			config, records_processed, last_processed_at, error_count, last_error
+			config, records_processed, last_processed_at, error_count, last_error,
+			input_test_status, input_test_message, output_test_status, output_test_message, last_tested_at
 		FROM control_datasets
 		WHERE tenant_id = $1 AND config->>'source'->>'type' = $2`
 
@@ -881,14 +928,29 @@ func (p *PostgreSQLStorage) queryDatasets(ctx context.Context, query string, arg
 	for rows.Next() {
 		var dataset Dataset
 		var configJSON []byte
+		var lastError sql.NullString
+		var inputTestMessage sql.NullString
+		var outputTestMessage sql.NullString
 
 		err := rows.Scan(
 			&dataset.ID, &dataset.TenantID, &dataset.Name, &dataset.DisplayName, &dataset.Description,
 			&dataset.Active, &dataset.Status, &dataset.CreatedAt, &dataset.UpdatedAt,
 			&configJSON, &dataset.RecordsProcessed, &dataset.LastProcessedAt,
-			&dataset.ErrorCount, &dataset.LastError)
+			&dataset.ErrorCount, &lastError,
+			&dataset.InputTestStatus, &inputTestMessage, &dataset.OutputTestStatus,
+			&outputTestMessage, &dataset.LastTestedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan dataset: %w", err)
+		}
+
+		if lastError.Valid {
+			dataset.LastError = lastError.String
+		}
+		if inputTestMessage.Valid {
+			dataset.InputTestMessage = inputTestMessage.String
+		}
+		if outputTestMessage.Valid {
+			dataset.OutputTestMessage = outputTestMessage.String
 		}
 
 		if err := json.Unmarshal(configJSON, &dataset.Config); err != nil {
@@ -972,7 +1034,8 @@ func (p *PostgreSQLStorage) ListAuditLogs(ctx context.Context, filter AuditLogFi
 		SELECT id, user_id, user_email, account_id, action, resource_type, resource_id, resource_name,
 			details, ip_address, user_agent, status, error_message, created_at
 		FROM control_audit_log
-		WHERE 1=1`
+		WHERE 1=1
+			AND action != 'dataset_tested'`
 
 	args := []interface{}{}
 	argIndex := 1

@@ -1715,24 +1715,18 @@ func (api *API) TestDataset() usecase.Interactor {
 		dataset.OutputTestMessage = outputMessage
 		dataset.LastTestedAt = &now
 
+		// Update overall dataset status based on test results
+		// If either input or output test is degraded, mark dataset as degraded
+		if inputStatus == "degraded" || outputStatus == "degraded" {
+			dataset.Status = "degraded"
+		} else if inputStatus == "active" && outputStatus == "active" {
+			dataset.Status = "active"
+		}
+		// If tests are "untested", keep current status
+
 		if err := api.Services.Storage.UpdateDataset(ctx, dataset); err != nil {
 			return fmt.Errorf("failed to update dataset test status: %w", err)
 		}
-
-		// Get tenant info for account ID
-		tenant, err := api.Services.Storage.GetTenantByID(ctx, input.TenantID)
-		accountID := ""
-		if err == nil && tenant != nil {
-			accountID = tenant.AccountID
-		}
-
-		// Log audit event
-		api.logAuditEvent(ctx, accountID, "dataset_tested", "dataset", input.DatasetID, map[string]interface{}{
-			"dataset_name":        dataset.Name,
-			"tenant_id":           input.TenantID,
-			"input_test_status":   inputStatus,
-			"output_test_status":  outputStatus,
-		})
 
 		// Populate output
 		output.Success = true

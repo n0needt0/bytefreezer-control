@@ -1448,9 +1448,9 @@ func (api *API) UpdateDataset() usecase.Interactor {
 			if err == nil {
 				var oldConfigCopy storage.DatasetConfig
 				if err := json.Unmarshal(oldConfigBytes, &oldConfigCopy); err == nil {
-					// Store full config in audit log (backend)
-					oldValues["config"] = oldConfigCopy
-					changes["config"] = *input.Config
+					// Redact sensitive credentials before storing in audit log
+					oldValues["config"] = redactDatasetConfigCredentials(oldConfigCopy)
+					changes["config"] = redactDatasetConfigCredentials(*input.Config)
 				}
 			}
 			dataset.Config = *input.Config
@@ -2557,6 +2557,30 @@ func compareMap(prefix string, oldMap, newMap map[string]interface{}, oldDiff, n
 			}
 		}
 	}
+}
+
+// redactDatasetConfigCredentials creates a copy of the DatasetConfig with sensitive credentials masked
+func redactDatasetConfigCredentials(config storage.DatasetConfig) storage.DatasetConfig {
+	// Create a deep copy by marshaling and unmarshaling
+	configBytes, err := json.Marshal(config)
+	if err != nil {
+		return config // Return original if can't copy
+	}
+
+	var redactedConfig storage.DatasetConfig
+	if err := json.Unmarshal(configBytes, &redactedConfig); err != nil {
+		return config // Return original if can't copy
+	}
+
+	// Redact S3 credentials from destination
+	if redactedConfig.Destination.Connection.Credentials.AccessKey != "" {
+		redactedConfig.Destination.Connection.Credentials.AccessKey = "***REDACTED***"
+	}
+	if redactedConfig.Destination.Connection.Credentials.SecretKey != "" {
+		redactedConfig.Destination.Connection.Credentials.SecretKey = "***REDACTED***"
+	}
+
+	return redactedConfig
 }
 
 // logAuditEvent is a helper that extracts user info from context and logs an audit event

@@ -213,12 +213,11 @@ func GetS3ConfigFromDataset(dataset *Dataset) (bucket, region, endpoint, accessK
 
 // TestWrite tests the ability to write to an S3 bucket by creating a small test file.
 // Does NOT delete the file as delete permissions may not be granted.
-// Uses timestamp-based filename to avoid conflicts.
+// Overwrites single test.txt file on each test; S3 last modified timestamp tracks last test.
 func (s *S3Cleaner) TestWrite(ctx context.Context, bucket string) error {
-	// Use timestamp to create unique filename
-	timestamp := time.Now().UnixNano()
-	testKey := fmt.Sprintf("test-%d.txt", timestamp)
-	testData := []byte("bytefreezer")
+	// Use single test.txt file with timestamp in content
+	testKey := "test.txt"
+	testData := []byte(fmt.Sprintf("ByteFreezer test at: %s", time.Now().Format(time.RFC3339)))
 
 	// Try to write test file
 	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{

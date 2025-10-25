@@ -1,5 +1,41 @@
 # ByteFreezer Control - Release Notes
 
+## v2.5.0: S3 Test File Optimization (2025-10-24)
+
+### Improvements
+
+#### S3 Write Test Optimization
+- **Reduced S3 Test File Accumulation**: Changed S3 write test to use single `test.txt` file instead of unlimited `test-timestamp.txt` files
+  - **Previous Behavior**: Created new `test-{timestamp}.txt` file for each test (every 5 minutes)
+    - Files accumulated indefinitely in S3 buckets
+    - Delete permissions not required but files never cleaned up
+  - **New Behavior**: Overwrites single `test.txt` file on each test
+    - Timestamp included in file content: `ByteFreezer test at: {RFC3339 timestamp}`
+    - S3's last modified timestamp tracks when test last ran
+    - Only one test file per bucket instead of unlimited accumulation
+  - **Impact**: Cleaner S3 buckets, reduced storage usage for test files
+  - **File Changed**: `storage/s3_helper.go:214-220`
+
+### Implementation Details
+```go
+// Before:
+timestamp := time.Now().UnixNano()
+testKey := fmt.Sprintf("test-%d.txt", timestamp)
+testData := []byte("bytefreezer")
+
+// After:
+testKey := "test.txt"  // Single file, will be overwritten
+testData := []byte(fmt.Sprintf("ByteFreezer test at: %s", time.Now().Format(time.RFC3339)))
+```
+
+### Benefits
+- Prevents unlimited test file accumulation in S3 buckets
+- Maintains test functionality (verifies write permissions)
+- File's last modified timestamp provides test history
+- Reduces storage costs and bucket clutter
+
+---
+
 ## v2.4.0: Configuration Cleanup and Standardization (2025-10-23)
 
 ### Critical Bug Fixes

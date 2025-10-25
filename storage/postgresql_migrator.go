@@ -249,6 +249,11 @@ func (m *PostgreSQLMigrator) getAllMigrations() []Migration {
 			Name:        "dataset_metrics_table",
 			Description: "Create dedicated dataset_metrics table and remove processing_metrics column",
 		},
+		{
+			Version:     10,
+			Name:        "add_component_metrics_columns",
+			Description: "Add component and component-specific metrics columns to dataset_metrics table",
+		},
 	}
 }
 
@@ -729,6 +734,22 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 			-- Remove the processing_metrics column completely
 			ALTER TABLE control_datasets DROP COLUMN IF EXISTS processing_metrics;`
 
+	case 10:
+		return `
+			-- Migration 010: Add component-specific metrics columns
+			-- Add component column to track which service logged the metric
+			ALTER TABLE dataset_metrics ADD COLUMN IF NOT EXISTS component VARCHAR(50) NOT NULL DEFAULT 'unknown';
+
+			-- Add component-specific metrics columns
+			ALTER TABLE dataset_metrics ADD COLUMN IF NOT EXISTS input_bytes BIGINT DEFAULT 0;
+			ALTER TABLE dataset_metrics ADD COLUMN IF NOT EXISTS output_bytes BIGINT DEFAULT 0;
+			ALTER TABLE dataset_metrics ADD COLUMN IF NOT EXISTS lines_processed BIGINT DEFAULT 0;
+			ALTER TABLE dataset_metrics ADD COLUMN IF NOT EXISTS error_count BIGINT DEFAULT 0;
+
+			-- Add index on component for filtering
+			CREATE INDEX IF NOT EXISTS idx_dataset_metrics_component ON dataset_metrics(component);
+			CREATE INDEX IF NOT EXISTS idx_dataset_metrics_tenant_dataset_component ON dataset_metrics(tenant_id, dataset_id, component);`
+
 	default:
 		return ""
 	}
@@ -809,6 +830,18 @@ func (m *PostgreSQLMigrator) getRollbackSQL(version int) string {
 
 			-- Recreate the GIN index on processing_metrics
 			CREATE INDEX IF NOT EXISTS idx_control_datasets_metrics_gin ON control_datasets USING gin(processing_metrics);`
+
+	case 10:
+		return `
+			-- Rollback migration 010: Remove component-specific metrics columns
+			DROP INDEX IF EXISTS idx_dataset_metrics_tenant_dataset_component;
+			DROP INDEX IF EXISTS idx_dataset_metrics_component;
+
+			ALTER TABLE dataset_metrics DROP COLUMN IF EXISTS error_count;
+			ALTER TABLE dataset_metrics DROP COLUMN IF EXISTS lines_processed;
+			ALTER TABLE dataset_metrics DROP COLUMN IF EXISTS output_bytes;
+			ALTER TABLE dataset_metrics DROP COLUMN IF EXISTS input_bytes;
+			ALTER TABLE dataset_metrics DROP COLUMN IF EXISTS component;`
 
 	default:
 		return ""

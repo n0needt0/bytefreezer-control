@@ -88,7 +88,7 @@ type Dataset struct {
 	LastTestedAt      *time.Time `json:"last_tested_at" db:"last_tested_at"`           // when last tested
 }
 
-// DatasetMetrics represents processing metrics for a dataset
+// DatasetMetrics represents processing metrics for a dataset (legacy, kept for compatibility)
 type DatasetMetrics struct {
 	TotalRecords      int64              `json:"total_records"`
 	ProcessedRecords  int64              `json:"processed_records"`
@@ -100,6 +100,49 @@ type DatasetMetrics struct {
 	ErrorRate         float64            `json:"error_rate"`
 	Throughput        map[string]int64   `json:"throughput"` // hourly/daily counts
 	CustomMetrics     map[string]interface{} `json:"custom_metrics,omitempty"`
+}
+
+// DatasetMetric represents a single metrics data point for time-series storage
+type DatasetMetric struct {
+	ID                   int64                  `json:"id" db:"id"`
+	TenantID             string                 `json:"tenant_id" db:"tenant_id"`
+	DatasetID            string                 `json:"dataset_id" db:"dataset_id"`
+	RecordedAt           time.Time              `json:"recorded_at" db:"recorded_at"`
+	Component            string                 `json:"component" db:"component"` // proxy, piper, packer, control
+
+	// Metrics fields
+	InputBytes           int64                  `json:"input_bytes" db:"input_bytes"`
+	OutputBytes          int64                  `json:"output_bytes" db:"output_bytes"`
+	LinesProcessed       int64                  `json:"lines_processed" db:"lines_processed"`
+	ErrorCount           int64                  `json:"error_count" db:"error_count"`
+
+	// Aggregation buckets
+	HourBucket           *time.Time             `json:"hour_bucket,omitempty" db:"hour_bucket"`
+	DayBucket            *time.Time             `json:"day_bucket,omitempty" db:"day_bucket"`
+
+	// Additional data
+	CustomMetrics        map[string]interface{} `json:"custom_metrics,omitempty" db:"custom_metrics"`
+}
+
+// MetricsQueryFilter provides filtering options for metrics queries
+type MetricsQueryFilter struct {
+	TenantID   string    // Required
+	DatasetID  string    // Required
+	Component  string    // Optional: filter by component (proxy, piper, packer, control)
+	StartTime  time.Time // Required
+	EndTime    time.Time // Required
+	Limit      int       // Max records to return (default 1000)
+}
+
+// ComponentMetrics represents aggregated metrics for a specific component
+type ComponentMetrics struct {
+	Component      string    `json:"component"`
+	InputBytes     int64     `json:"input_bytes"`
+	OutputBytes    int64     `json:"output_bytes"`
+	LinesProcessed int64     `json:"lines_processed"`
+	ErrorCount     int64     `json:"error_count"`
+	StartTime      time.Time `json:"start_time"`
+	EndTime        time.Time `json:"end_time"`
 }
 
 // AuditLog represents an audit log entry for tracking user actions
@@ -204,6 +247,12 @@ type Storage interface {
 	DeleteProxyConfig(ctx context.Context, instanceID, tenantID string) error
 	MarkProxyConfigApplied(ctx context.Context, instanceID, tenantID string, configVersion int) error
 	GetProxyConfigHistory(ctx context.Context, instanceID, tenantID string, limit int) ([]*ProxyConfigHistory, error)
+
+	// Dataset Metrics operations
+	RecordDatasetMetric(ctx context.Context, metric *DatasetMetric) error
+	QueryDatasetMetrics(ctx context.Context, filter MetricsQueryFilter) ([]*DatasetMetric, error)
+	GetAggregatedMetrics(ctx context.Context, filter MetricsQueryFilter) ([]*ComponentMetrics, error)
+	CleanupOldMetrics(ctx context.Context, olderThan time.Time) (int64, error)
 
 	// Utility operations
 	HealthCheck(ctx context.Context) error

@@ -8,20 +8,21 @@ Avoid flattery, compliments, or positive language. Be clear and concise. Do not 
 
 requirements:
 
-please add s3 configuration , where data should be deleted:
+we need to start logging metrics for each dataset. the metrix should contain:
+display in ui should be located in Statistics page. and contain the minimum:
 
-in buckets when deleting data drop 
+timerange:
+last 15 min, last hour, 6hours, 24hr, 7 days, 30 days, 90 days  (90 days is maximum being stored in db)
 
-intake_bucket/{tenant_id}/{dataset_id}
-piper_bucket/{tenant_id}/{dataset_id}
+metrics to log per dataset:
+- proxy: input bytes , lines processed, errors
+- piper: output bytes, lines processed, errors
+- packer: output bytes, lines processed, errors
+- control: API requests, errors  
+the folowing are optional, as we may not have visibility into them, we can use s3 upload stats from packer if needed
 
-s3configuration:
-  intake_bucket: "intake"
-  piper_bucket: "piper"
+- storage: total bytes stored, total lines stored
 
-  region: "us-east-1"
-  endpoint: "192.168.86.125:9000"  # Your MinIO endpoint
-  ssl: false
-  access_key: "AKIAQNXBAHUKIMJP26P6"
-  secret_key: "SECRET_KEY_AKIAQNXBAHUKIMJP26P6"
-  use_iam_role: false
+if i recall we had something already stored in db dataset_metrics table, please verify if that is being used or not.
+
+

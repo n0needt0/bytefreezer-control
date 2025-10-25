@@ -128,6 +128,11 @@ func (api *API) NewRouter() *web.Service {
 	service.Delete("/api/v1/tenants/{tenantId}/datasets/{datasetId}", api.DeleteDataset())
 	service.Post("/api/v1/tenants/{tenantId}/datasets/{datasetId}/test", api.TestDataset())
 
+	// Dataset metrics endpoints
+	service.Post("/api/v1/tenants/{tenantId}/datasets/{datasetId}/metrics", api.RecordDatasetMetric())
+	service.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/metrics", api.QueryDatasetMetrics())
+	service.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/metrics/aggregated", api.GetAggregatedMetrics())
+
 	// User management endpoints
 	service.Get("/api/v1/users", api.ListUsers())
 	service.Get("/api/v1/users/{userId}", api.GetUser())

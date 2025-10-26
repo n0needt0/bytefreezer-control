@@ -15,7 +15,7 @@ func (api *API) RecordDatasetMetric() usecase.Interactor {
 	type recordDatasetMetricInput struct {
 		TenantID       string                 `path:"tenantId" minLength:"1"`
 		DatasetID      string                 `path:"datasetId" minLength:"1"`
-		Component      string                 `json:"component" minLength:"1" maxLength:"50" required:"true" description:"Component name (proxy, piper, packer, control)"`
+		Component      string                 `json:"component" minLength:"1" maxLength:"50" required:"true" description:"Observation point (proxy-to-receiver, receiver-to-piper, piper-to-packer, packer-to-storage, control)"`
 		InputBytes     int64                  `json:"input_bytes" minimum:"0" description:"Input bytes processed"`
 		OutputBytes    int64                  `json:"output_bytes" minimum:"0" description:"Output bytes processed"`
 		LinesProcessed int64                  `json:"lines_processed" minimum:"0" description:"Number of lines processed"`
@@ -32,12 +32,12 @@ func (api *API) RecordDatasetMetric() usecase.Interactor {
 	u := usecase.NewInteractor(func(ctx context.Context, input recordDatasetMetricInput, output *recordDatasetMetricOutput) error {
 		api.Services.IncrementAPIRequests()
 
-		// Validate component name
+		// Validate observation point name
 		validComponents := map[string]bool{
-			"proxy": true, "receiver": true, "piper": true, "packer": true, "control": true,
+			"proxy-to-receiver": true, "receiver-to-piper": true, "piper-to-packer": true, "packer-to-storage": true, "control": true,
 		}
 		if !validComponents[input.Component] {
-			return fmt.Errorf("invalid component: %s (must be one of: proxy, receiver, piper, packer, control)", input.Component)
+			return fmt.Errorf("invalid observation point: %s (must be one of: proxy-to-receiver, receiver-to-piper, piper-to-packer, packer-to-storage, control)", input.Component)
 		}
 
 		// Create metric record

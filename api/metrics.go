@@ -34,10 +34,10 @@ func (api *API) RecordDatasetMetric() usecase.Interactor {
 
 		// Validate component name
 		validComponents := map[string]bool{
-			"proxy": true, "piper": true, "packer": true, "control": true,
+			"proxy": true, "receiver": true, "piper": true, "packer": true, "control": true,
 		}
 		if !validComponents[input.Component] {
-			return fmt.Errorf("invalid component: %s (must be one of: proxy, piper, packer, control)", input.Component)
+			return fmt.Errorf("invalid component: %s (must be one of: proxy, receiver, piper, packer, control)", input.Component)
 		}
 
 		// Create metric record

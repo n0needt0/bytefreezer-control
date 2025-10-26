@@ -191,7 +191,14 @@ func (svc *Server) runHousekeeping() {
 
 	// Perform database maintenance
 	if svc.Services.Database != nil {
-		// Add database maintenance tasks here
+		// Cleanup old metrics (90-day retention)
+		cutoffTime := time.Now().Add(-90 * 24 * time.Hour)
+		if deletedCount, err := svc.Services.Storage.CleanupOldMetrics(nil, cutoffTime); err != nil {
+			log.Warnf("Failed to cleanup old metrics: %v", err)
+		} else if deletedCount > 0 {
+			log.Infof("Cleaned up %d old metrics records (older than %v)", deletedCount, cutoffTime.Format(time.RFC3339))
+		}
+
 		log.Debug("Database maintenance completed")
 	}
 

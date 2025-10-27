@@ -18,6 +18,11 @@ type PostgreSQLStorage struct {
 	migrator *PostgreSQLMigrator
 }
 
+// DB returns the underlying database connection for direct access
+func (s *PostgreSQLStorage) DB() *sql.DB {
+	return s.db
+}
+
 // NewPostgreSQLStorage creates a new PostgreSQL storage instance
 func NewPostgreSQLStorage(config Config) (*PostgreSQLStorage, error) {
 	// Set default SSL mode if not specified

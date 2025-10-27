@@ -102,6 +102,11 @@ config:
     timeout_seconds: 10  # HTTP timeout for health operations
     register_on_startup: true  # Register service instance on startup
 
+  # Error tracking configuration for centralized error monitoring
+  # Note: Control service hosts the error tracking API, so this enables self-tracking
+  error_tracking:
+    enabled: true  # Enable by default to collect errors from control service itself
+
   # Development mode
   dev: true  # Enable dev mode for browser testing
 

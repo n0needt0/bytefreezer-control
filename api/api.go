@@ -133,6 +133,15 @@ func (api *API) NewRouter() *web.Service {
 	service.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/metrics", api.QueryDatasetMetrics())
 	service.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/metrics/aggregated", api.GetAggregatedMetrics())
 
+	// Error tracking endpoints (v2)
+	service.Post("/api/v2/errors/track", api.TrackError())
+	service.Get("/api/v2/errors", api.ListErrors())
+	service.Get("/api/v2/errors/{errorId}", api.GetError())
+	service.Patch("/api/v2/errors/{errorId}/status", api.UpdateErrorStatus())
+	service.Get("/api/v2/errors/stats", api.GetErrorStats())
+	service.Get("/api/v2/errors/recent", api.GetRecentErrors())
+	service.Get("/api/v2/tenants/{tenantId}/datasets/{datasetId}/errors", api.GetDatasetErrors())
+
 	// User management endpoints
 	service.Get("/api/v1/users", api.ListUsers())
 	service.Get("/api/v1/users/{userId}", api.GetUser())

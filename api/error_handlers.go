@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/n0needt0/bytefreezer-control/middleware"
+	"github.com/n0needt0/bytefreezer-control/services"
 	"github.com/n0needt0/bytefreezer-control/storage"
 	"github.com/n0needt0/go-goodies/log"
 	"github.com/swaggest/usecase"
@@ -138,14 +139,14 @@ func (api *API) ListErrors() usecase.Interactor {
 
 		log.Debugf("[ACCESS CONTROL] Attempting to extract JWT claims from context")
 
-		// Use the correct context key that middleware actually uses
-		if claims, ok := ctx.Value(middleware.UserContextKey).(*middleware.UserClaims); ok {
+		// Use the correct context key that jwt_auth middleware actually uses
+		if claims, ok := ctx.Value(middleware.JWTClaimsContextKey).(*services.JWTClaims); ok {
 			userAccountID = claims.AccountID
-			isSystemAdmin = claims.IsSystemAdmin()
+			isSystemAdmin = (claims.Role == "system_admin")
 			log.Debugf("[ACCESS CONTROL] Successfully extracted claims: AccountID=%s, Role=%s, IsSystemAdmin=%v",
 				claims.AccountID, claims.Role, isSystemAdmin)
 		} else {
-			log.Warnf("[ACCESS CONTROL] Failed to extract UserClaims from context - user will see all errors")
+			log.Warnf("[ACCESS CONTROL] Failed to extract JWTClaims from context - user will see all errors")
 		}
 
 		// Build WHERE clauses

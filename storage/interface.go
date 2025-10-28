@@ -151,6 +151,7 @@ type SystemError struct {
 	ErrorHash        string                 `json:"error_hash" db:"error_hash"`
 	ErrorType        string                 `json:"error_type" db:"error_type"`
 	Component        string                 `json:"component" db:"component"`
+	AccountID        string                 `json:"account_id,omitempty" db:"account_id"`
 	TenantID         string                 `json:"tenant_id,omitempty" db:"tenant_id"`
 	DatasetID        string                 `json:"dataset_id,omitempty" db:"dataset_id"`
 	ErrorMessage     string                 `json:"error_message" db:"error_message"`

@@ -17,12 +17,13 @@ func (api *API) TrackError() usecase.Interactor {
 		ErrorHash    string                 `json:"error_hash" minLength:"64" maxLength:"64" required:"true" description:"SHA256 hash for error deduplication"`
 		ErrorType    string                 `json:"error_type" minLength:"1" maxLength:"100" required:"true" description:"Error category (pipeline_processing, s3_operation, validation, etc.)"`
 		Component    string                 `json:"component" minLength:"1" maxLength:"50" required:"true" description:"Component that generated the error (piper, packer, receiver, proxy, control, soc)"`
+		AccountID    string                 `json:"account_id,omitempty" maxLength:"255" description:"Optional account ID for access control"`
 		TenantID     string                 `json:"tenant_id,omitempty" maxLength:"255" description:"Optional tenant ID"`
 		DatasetID    string                 `json:"dataset_id,omitempty" maxLength:"255" description:"Optional dataset ID"`
-		ErrorMessage string                 `json:"error_message" minLength:"1" required:"true" description:"Full error message"`
-		ErrorSample  map[string]interface{} `json:"error_sample,omitempty" description:"Sample error details (context, stack trace, etc.)"`
+		ErrorMessage string                 `json:"error_message" minLength:"1" required:"true" description:"Full error message (DO NOT include sensitive data like passwords, tokens, or PII)"`
+		ErrorSample  map[string]interface{} `json:"error_sample,omitempty" description:"Sample error details (DO NOT include sensitive data)"`
 		Severity     string                 `json:"severity" required:"true" description:"Severity level: debug, info, warning, error, critical"`
-		Metadata     map[string]interface{} `json:"metadata,omitempty" description:"Additional metadata"`
+		Metadata     map[string]interface{} `json:"metadata,omitempty" description:"Additional metadata (DO NOT include sensitive data)"`
 	}
 
 	type trackErrorOutput struct {
@@ -75,10 +76,11 @@ func (api *API) TrackError() usecase.Interactor {
 
 		// Call upsert_system_error PostgreSQL function
 		_, err = pgStorage.DB().ExecContext(ctx,
-			`SELECT upsert_system_error($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+			`SELECT upsert_system_error($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 			input.ErrorHash,
 			input.ErrorType,
 			input.Component,
+			input.AccountID,
 			input.TenantID,
 			input.DatasetID,
 			input.ErrorMessage,
@@ -129,10 +131,33 @@ func (api *API) ListErrors() usecase.Interactor {
 			return fmt.Errorf("storage backend is not PostgreSQL")
 		}
 
+		// Get user from context for access control
+		userCtx := ctx.Value("user")
+		var userAccountID string
+		var isSystemAdmin bool
+
+		if userCtx != nil {
+			if userMap, ok := userCtx.(map[string]interface{}); ok {
+				if aid, ok := userMap["account_id"].(string); ok {
+					userAccountID = aid
+				}
+				if admin, ok := userMap["is_system_admin"].(bool); ok {
+					isSystemAdmin = admin
+				}
+			}
+		}
+
 		// Build WHERE clauses
 		whereClauses := []string{"status = $1"}
 		args := []interface{}{input.Status}
 		argCount := 2
+
+		// Access control: non-system-admins can only see their account's errors
+		if !isSystemAdmin && userAccountID != "" {
+			whereClauses = append(whereClauses, fmt.Sprintf("account_id = $%d", argCount))
+			args = append(args, userAccountID)
+			argCount++
+		}
 
 		if input.Component != "" {
 			whereClauses = append(whereClauses, fmt.Sprintf("component = $%d", argCount))
@@ -179,7 +204,7 @@ func (api *API) ListErrors() usecase.Interactor {
 
 		// Query errors with limit and offset
 		query := fmt.Sprintf(`
-			SELECT id, error_hash, error_type, component, tenant_id, dataset_id,
+			SELECT id, error_hash, error_type, component, account_id, tenant_id, dataset_id,
 				   error_message, error_sample, severity, status, occurrence_count,
 				   first_seen, last_seen, sample_rate, samples_collected, samples_dropped,
 				   metadata, created_at, updated_at, resolved_at
@@ -201,11 +226,11 @@ func (api *API) ListErrors() usecase.Interactor {
 		for rows.Next() {
 			e := &storage.SystemError{}
 			var errorSampleJSON, metadataJSON []byte
-			var tenantID, datasetID sql.NullString
+			var accountID, tenantID, datasetID sql.NullString
 			var resolvedAt sql.NullTime
 
 			err := rows.Scan(
-				&e.ID, &e.ErrorHash, &e.ErrorType, &e.Component, &tenantID, &datasetID,
+				&e.ID, &e.ErrorHash, &e.ErrorType, &e.Component, &accountID, &tenantID, &datasetID,
 				&e.ErrorMessage, &errorSampleJSON, &e.Severity, &e.Status, &e.OccurrenceCount,
 				&e.FirstSeen, &e.LastSeen, &e.SampleRate, &e.SamplesCollected, &e.SamplesDropped,
 				&metadataJSON, &e.CreatedAt, &e.UpdatedAt, &resolvedAt,
@@ -215,6 +240,9 @@ func (api *API) ListErrors() usecase.Interactor {
 				continue
 			}
 
+			if accountID.Valid {
+				e.AccountID = accountID.String
+			}
 			if tenantID.Valid {
 				e.TenantID = tenantID.String
 			}
@@ -272,7 +300,7 @@ func (api *API) GetError() usecase.Interactor {
 		}
 
 		query := `
-			SELECT id, error_hash, error_type, component, tenant_id, dataset_id,
+			SELECT id, error_hash, error_type, component, account_id, tenant_id, dataset_id,
 				   error_message, error_sample, severity, status, occurrence_count,
 				   first_seen, last_seen, sample_rate, samples_collected, samples_dropped,
 				   metadata, created_at, updated_at, resolved_at
@@ -282,11 +310,11 @@ func (api *API) GetError() usecase.Interactor {
 
 		e := &storage.SystemError{}
 		var errorSampleJSON, metadataJSON []byte
-		var tenantID, datasetID sql.NullString
+		var accountID, tenantID, datasetID sql.NullString
 		var resolvedAt sql.NullTime
 
 		err := pgStorage.DB().QueryRowContext(ctx, query, input.ErrorID).Scan(
-			&e.ID, &e.ErrorHash, &e.ErrorType, &e.Component, &tenantID, &datasetID,
+			&e.ID, &e.ErrorHash, &e.ErrorType, &e.Component, &accountID, &tenantID, &datasetID,
 			&e.ErrorMessage, &errorSampleJSON, &e.Severity, &e.Status, &e.OccurrenceCount,
 			&e.FirstSeen, &e.LastSeen, &e.SampleRate, &e.SamplesCollected, &e.SamplesDropped,
 			&metadataJSON, &e.CreatedAt, &e.UpdatedAt, &resolvedAt,
@@ -299,6 +327,9 @@ func (api *API) GetError() usecase.Interactor {
 			return fmt.Errorf("failed to query error: %w", err)
 		}
 
+		if accountID.Valid {
+			e.AccountID = accountID.String
+		}
 		if tenantID.Valid {
 			e.TenantID = tenantID.String
 		}
@@ -561,7 +592,7 @@ func (api *API) GetRecentErrors() usecase.Interactor {
 		}
 
 		query := `
-			SELECT id, error_hash, error_type, component, tenant_id, dataset_id,
+			SELECT id, error_hash, error_type, component, account_id, tenant_id, dataset_id,
 				   error_message, error_sample, severity, status, occurrence_count,
 				   first_seen, last_seen, sample_rate, samples_collected, samples_dropped,
 				   metadata, created_at, updated_at, resolved_at
@@ -582,11 +613,11 @@ func (api *API) GetRecentErrors() usecase.Interactor {
 		for rows.Next() {
 			e := &storage.SystemError{}
 			var errorSampleJSON, metadataJSON []byte
-			var tenantID, datasetID sql.NullString
+			var accountID, tenantID, datasetID sql.NullString
 			var resolvedAt sql.NullTime
 
 			err := rows.Scan(
-				&e.ID, &e.ErrorHash, &e.ErrorType, &e.Component, &tenantID, &datasetID,
+				&e.ID, &e.ErrorHash, &e.ErrorType, &e.Component, &accountID, &tenantID, &datasetID,
 				&e.ErrorMessage, &errorSampleJSON, &e.Severity, &e.Status, &e.OccurrenceCount,
 				&e.FirstSeen, &e.LastSeen, &e.SampleRate, &e.SamplesCollected, &e.SamplesDropped,
 				&metadataJSON, &e.CreatedAt, &e.UpdatedAt, &resolvedAt,
@@ -596,6 +627,9 @@ func (api *API) GetRecentErrors() usecase.Interactor {
 				continue
 			}
 
+			if accountID.Valid {
+				e.AccountID = accountID.String
+			}
 			if tenantID.Valid {
 				e.TenantID = tenantID.String
 			}
@@ -656,7 +690,7 @@ func (api *API) GetDatasetErrors() usecase.Interactor {
 		}
 
 		query := `
-			SELECT id, error_hash, error_type, component, tenant_id, dataset_id,
+			SELECT id, error_hash, error_type, component, account_id, tenant_id, dataset_id,
 				   error_message, error_sample, severity, status, occurrence_count,
 				   first_seen, last_seen, sample_rate, samples_collected, samples_dropped,
 				   metadata, created_at, updated_at, resolved_at
@@ -677,11 +711,11 @@ func (api *API) GetDatasetErrors() usecase.Interactor {
 		for rows.Next() {
 			e := &storage.SystemError{}
 			var errorSampleJSON, metadataJSON []byte
-			var tenantID, datasetID sql.NullString
+			var accountID, tenantID, datasetID sql.NullString
 			var resolvedAt sql.NullTime
 
 			err := rows.Scan(
-				&e.ID, &e.ErrorHash, &e.ErrorType, &e.Component, &tenantID, &datasetID,
+				&e.ID, &e.ErrorHash, &e.ErrorType, &e.Component, &accountID, &tenantID, &datasetID,
 				&e.ErrorMessage, &errorSampleJSON, &e.Severity, &e.Status, &e.OccurrenceCount,
 				&e.FirstSeen, &e.LastSeen, &e.SampleRate, &e.SamplesCollected, &e.SamplesDropped,
 				&metadataJSON, &e.CreatedAt, &e.UpdatedAt, &resolvedAt,
@@ -691,6 +725,9 @@ func (api *API) GetDatasetErrors() usecase.Interactor {
 				continue
 			}
 
+			if accountID.Valid {
+				e.AccountID = accountID.String
+			}
 			if tenantID.Valid {
 				e.TenantID = tenantID.String
 			}

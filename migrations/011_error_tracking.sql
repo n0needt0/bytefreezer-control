@@ -189,7 +189,7 @@ $$ LANGUAGE plpgsql;
 
 -- Insert migration record
 INSERT INTO control_migrations (version, name, applied_at)
-VALUES (8, 'error_tracking', NOW())
+VALUES (11, 'error_tracking', NOW())
 ON CONFLICT (version) DO NOTHING;
 
 -- Add comments for documentation

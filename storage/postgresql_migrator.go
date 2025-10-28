@@ -254,6 +254,26 @@ func (m *PostgreSQLMigrator) getAllMigrations() []Migration {
 			Name:        "add_component_metrics_columns",
 			Description: "Add component and component-specific metrics columns to dataset_metrics table",
 		},
+		{
+			Version:     11,
+			Name:        "error_tracking",
+			Description: "Create system_errors table with adaptive sampling and deduplication for centralized error tracking",
+		},
+		{
+			Version:     12,
+			Name:        "error_tracking_trigger",
+			Description: "Add update trigger for system_errors table",
+		},
+		{
+			Version:     13,
+			Name:        "error_tracking_upsert",
+			Description: "Add upsert function for system_errors with adaptive sampling",
+		},
+		{
+			Version:     14,
+			Name:        "error_tracking_upsert_func",
+			Description: "Add upsert function implementation for system_errors",
+		},
 	}
 }
 
@@ -749,6 +769,51 @@ func (m *PostgreSQLMigrator) getMigrationSQL(version int) string {
 			-- Add index on component for filtering
 			CREATE INDEX IF NOT EXISTS idx_dataset_metrics_component ON dataset_metrics(component);
 			CREATE INDEX IF NOT EXISTS idx_dataset_metrics_tenant_dataset_component ON dataset_metrics(tenant_id, dataset_id, component);`
+
+	case 11:
+		return `CREATE TABLE IF NOT EXISTS system_errors (
+    id BIGSERIAL PRIMARY KEY,
+    error_hash VARCHAR(64) NOT NULL UNIQUE,
+    error_type VARCHAR(100) NOT NULL,
+    component VARCHAR(50) NOT NULL CHECK (component IN ('proxy', 'receiver', 'piper', 'packer', 'control', 'soc')),
+    tenant_id VARCHAR(255),
+    dataset_id VARCHAR(255),
+    error_message TEXT NOT NULL,
+    error_sample JSONB,
+    severity VARCHAR(20) NOT NULL DEFAULT 'error' CHECK (severity IN ('debug', 'info', 'warning', 'error', 'critical')),
+    status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'resolved', 'ignored')),
+    occurrence_count BIGINT NOT NULL DEFAULT 1,
+    first_seen TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    last_seen TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    sample_rate FLOAT NOT NULL DEFAULT 1.0,
+    samples_collected INTEGER NOT NULL DEFAULT 1,
+    samples_dropped INTEGER NOT NULL DEFAULT 0,
+    metadata JSONB,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    resolved_at TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX IF NOT EXISTS idx_system_errors_component ON system_errors(component);
+CREATE INDEX IF NOT EXISTS idx_system_errors_tenant_dataset ON system_errors(tenant_id, dataset_id) WHERE tenant_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_system_errors_error_type ON system_errors(error_type);
+CREATE INDEX IF NOT EXISTS idx_system_errors_severity ON system_errors(severity);
+CREATE INDEX IF NOT EXISTS idx_system_errors_status ON system_errors(status);
+CREATE INDEX IF NOT EXISTS idx_system_errors_last_seen ON system_errors(last_seen DESC);
+CREATE INDEX IF NOT EXISTS idx_system_errors_occurrence_count ON system_errors(occurrence_count DESC);
+CREATE INDEX IF NOT EXISTS idx_system_errors_component_status_last_seen ON system_errors(component, status, last_seen DESC);
+CREATE INDEX IF NOT EXISTS idx_system_errors_tenant_dataset_status ON system_errors(tenant_id, dataset_id, status, last_seen DESC) WHERE tenant_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_system_errors_metadata_gin ON system_errors USING GIN (metadata);
+CREATE INDEX IF NOT EXISTS idx_system_errors_sample_gin ON system_errors USING GIN (error_sample)`
+
+	case 12:
+		return `CREATE OR REPLACE FUNCTION update_system_errors_updated_at() RETURNS TRIGGER AS $func$ BEGIN NEW.updated_at = NOW(); RETURN NEW; END; $func$ LANGUAGE plpgsql`
+
+	case 13:
+		return `CREATE TRIGGER trigger_update_system_errors_updated_at BEFORE UPDATE ON system_errors FOR EACH ROW EXECUTE FUNCTION update_system_errors_updated_at()`
+
+	case 14:
+		return `CREATE OR REPLACE FUNCTION upsert_system_error(p_error_hash VARCHAR(64), p_error_type VARCHAR(100), p_component VARCHAR(50), p_tenant_id VARCHAR(255), p_dataset_id VARCHAR(255), p_error_message TEXT, p_error_sample JSONB, p_severity VARCHAR(20), p_metadata JSONB) RETURNS VOID AS $func$ DECLARE v_occurrence_count BIGINT; v_sample_rate FLOAT; v_should_sample BOOLEAN; BEGIN SELECT occurrence_count, sample_rate INTO v_occurrence_count, v_sample_rate FROM system_errors WHERE error_hash = p_error_hash; IF FOUND THEN IF v_occurrence_count >= 10000 THEN v_sample_rate := 0.001; ELSIF v_occurrence_count >= 1000 THEN v_sample_rate := 0.01; ELSIF v_occurrence_count >= 100 THEN v_sample_rate := 0.1; ELSE v_sample_rate := 1.0; END IF; v_should_sample := (random() <= v_sample_rate); UPDATE system_errors SET occurrence_count = occurrence_count + 1, last_seen = NOW(), sample_rate = v_sample_rate, samples_collected = CASE WHEN v_should_sample THEN samples_collected + 1 ELSE samples_collected END, samples_dropped = CASE WHEN v_should_sample THEN samples_dropped ELSE samples_dropped + 1 END, error_sample = CASE WHEN v_should_sample THEN p_error_sample ELSE error_sample END, metadata = CASE WHEN v_should_sample AND p_metadata IS NOT NULL THEN p_metadata ELSE metadata END WHERE error_hash = p_error_hash; ELSE INSERT INTO system_errors (error_hash, error_type, component, tenant_id, dataset_id, error_message, error_sample, severity, metadata, occurrence_count, sample_rate, samples_collected, samples_dropped) VALUES (p_error_hash, p_error_type, p_component, p_tenant_id, p_dataset_id, p_error_message, p_error_sample, p_severity, p_metadata, 1, 1.0, 1, 0); END IF; END; $func$ LANGUAGE plpgsql`
+
 
 	default:
 		return ""

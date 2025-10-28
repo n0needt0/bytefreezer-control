@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/n0needt0/bytefreezer-control/config"
@@ -17,10 +16,16 @@ type contextKey string
 const UserContextKey = contextKey("user")
 
 type UserClaims struct {
-	Username       string `json:"username"`
-	AccountID      string `json:"account_id"`
-	IsSystemAdmin  bool   `json:"is_system_admin"`
+	UserID    string `json:"user_id"`
+	AccountID string `json:"account_id"`
+	Email     string `json:"email"`
+	Role      string `json:"role"`
 	jwt.RegisteredClaims
+}
+
+// IsSystemAdmin returns true if the user has system_admin role
+func (u *UserClaims) IsSystemAdmin() bool {
+	return u.Role == "system_admin"
 }
 
 // AuthMiddleware provides JWT authentication middleware
@@ -59,7 +64,7 @@ func AuthMiddleware(authConfig config.AuthConfig) func(http.Handler) http.Handle
 
 			if claims, ok := token.Claims.(*UserClaims); ok && token.Valid {
 				// Check if user is admin for admin-only endpoints
-				if isAdminEndpoint(r.URL.Path) && !claims.IsSystemAdmin {
+				if isAdminEndpoint(r.URL.Path) && !claims.IsSystemAdmin() {
 					http.Error(w, "Admin access required", http.StatusForbidden)
 					return
 				}
@@ -75,21 +80,6 @@ func AuthMiddleware(authConfig config.AuthConfig) func(http.Handler) http.Handle
 	}
 }
 
-// GenerateToken generates a JWT token for a user
-func GenerateToken(username string, accountID string, isSystemAdmin bool, authConfig config.AuthConfig) (string, error) {
-	claims := UserClaims{
-		Username:      username,
-		AccountID:     accountID,
-		IsSystemAdmin: isSystemAdmin,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(authConfig.TokenExpiryHours) * time.Hour)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-		},
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(authConfig.JWTSecret))
-}
 
 // ConditionalAuthMiddleware provides JWT authentication middleware that skips public endpoints
 func ConditionalAuthMiddleware(authConfig config.AuthConfig) func(http.Handler) http.Handler {

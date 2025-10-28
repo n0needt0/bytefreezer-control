@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	"github.com/n0needt0/bytefreezer-control/middleware"
-	"github.com/n0needt0/bytefreezer-control/services"
 	"github.com/n0needt0/bytefreezer-control/storage"
 	"github.com/n0needt0/go-goodies/log"
 	"github.com/swaggest/usecase"
@@ -137,9 +136,16 @@ func (api *API) ListErrors() usecase.Interactor {
 		var userAccountID string
 		var isSystemAdmin bool
 
-		if claims, ok := ctx.Value(middleware.JWTClaimsContextKey).(*services.JWTClaims); ok {
+		log.Debugf("[ACCESS CONTROL] Attempting to extract JWT claims from context")
+
+		// Use the correct context key that middleware actually uses
+		if claims, ok := ctx.Value(middleware.UserContextKey).(*middleware.UserClaims); ok {
 			userAccountID = claims.AccountID
-			isSystemAdmin = (claims.Role == "system_admin")
+			isSystemAdmin = claims.IsSystemAdmin()
+			log.Debugf("[ACCESS CONTROL] Successfully extracted claims: AccountID=%s, Role=%s, IsSystemAdmin=%v",
+				claims.AccountID, claims.Role, isSystemAdmin)
+		} else {
+			log.Warnf("[ACCESS CONTROL] Failed to extract UserClaims from context - user will see all errors")
 		}
 
 		// Build WHERE clauses
@@ -149,9 +155,12 @@ func (api *API) ListErrors() usecase.Interactor {
 
 		// Access control: non-system-admins can only see their account's errors
 		if !isSystemAdmin && userAccountID != "" {
+			log.Debugf("[ACCESS CONTROL] Applying account filter: account_id = %s", userAccountID)
 			whereClauses = append(whereClauses, fmt.Sprintf("account_id = $%d", argCount))
 			args = append(args, userAccountID)
 			argCount++
+		} else {
+			log.Debugf("[ACCESS CONTROL] No account filter applied (isSystemAdmin=%v, userAccountID=%s)", isSystemAdmin, userAccountID)
 		}
 
 		if input.Component != "" {

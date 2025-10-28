@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -193,7 +194,8 @@ func (svc *Server) runHousekeeping() {
 	if svc.Services.Database != nil {
 		// Cleanup old metrics (90-day retention)
 		cutoffTime := time.Now().Add(-90 * 24 * time.Hour)
-		if deletedCount, err := svc.Services.Storage.CleanupOldMetrics(nil, cutoffTime); err != nil {
+		ctx := context.Background()
+		if deletedCount, err := svc.Services.Storage.CleanupOldMetrics(ctx, cutoffTime); err != nil {
 			log.Warnf("Failed to cleanup old metrics: %v", err)
 		} else if deletedCount > 0 {
 			log.Infof("Cleaned up %d old metrics records (older than %v)", deletedCount, cutoffTime.Format(time.RFC3339))

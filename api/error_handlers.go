@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/n0needt0/bytefreezer-control/middleware"
+	"github.com/n0needt0/bytefreezer-control/services"
 	"github.com/n0needt0/bytefreezer-control/storage"
 	"github.com/n0needt0/go-goodies/log"
 	"github.com/swaggest/usecase"
@@ -132,19 +134,12 @@ func (api *API) ListErrors() usecase.Interactor {
 		}
 
 		// Get user from context for access control
-		userCtx := ctx.Value("user")
 		var userAccountID string
 		var isSystemAdmin bool
 
-		if userCtx != nil {
-			if userMap, ok := userCtx.(map[string]interface{}); ok {
-				if aid, ok := userMap["account_id"].(string); ok {
-					userAccountID = aid
-				}
-				if admin, ok := userMap["is_system_admin"].(bool); ok {
-					isSystemAdmin = admin
-				}
-			}
+		if claims, ok := ctx.Value(middleware.JWTClaimsContextKey).(*services.JWTClaims); ok {
+			userAccountID = claims.AccountID
+			isSystemAdmin = (claims.Role == "system_admin")
 		}
 
 		// Build WHERE clauses

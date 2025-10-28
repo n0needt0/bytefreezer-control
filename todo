@@ -5,24 +5,19 @@ Avoid flattery, compliments, or positive language. Be clear and concise. Do not 
 - Prioritize thoroughness over speed
 - If I correct you, adapt your method for the rest of the task
 - No completion claims until you can demonstrate test end to end. 
+- here where services live: 
+   proxy and piper are on tp1, receiver and packer on tp2, control on tp3
+- do not attempt ssh connections to db on .137 this is metallb for postgres only
+- when constructing data access logic always remember system account can see everything, account logins can only see their account data
+
+
 
 requirements:
 
-we need to start logging metrics for each dataset. the metrix should contain:
-display in ui should be located in Statistics page. and contain the minimum:
+i deployed latest control , i still see all errors on system erros page. thye are not filtered at all.
+only system administrators should see all errors, but all the other accoutns should only see their account errors
 
-timerange:
-last 15 min, last hour, 6hours, 24hr, 7 days, 30 days, 90 days  (90 days is maximum being stored in db)
+- on Dataset Statistics page add account/dataset filter as well to count "Total errors". then link counter to system errors page with preconstructed filter.
 
-metrics to log per dataset:
-- proxy: input bytes , lines processed, errors
-- piper: output bytes, lines processed, errors
-- packer: output bytes, lines processed, errors
-- control: API requests, errors  
-the folowing are optional, as we may not have visibility into them, we can use s3 upload stats from packer if needed
-
-- storage: total bytes stored, total lines stored
-
-if i recall we had something already stored in db dataset_metrics table, please verify if that is being used or not.
-
-
+- please provide test api calls to control for me to test.
+- atm i see this url pulls system errors data, as you can see there no filtering at all

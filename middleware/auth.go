@@ -17,8 +17,9 @@ type contextKey string
 const UserContextKey = contextKey("user")
 
 type UserClaims struct {
-	Username string `json:"username"`
-	IsAdmin  bool   `json:"is_admin"`
+	Username       string `json:"username"`
+	AccountID      string `json:"account_id"`
+	IsSystemAdmin  bool   `json:"is_system_admin"`
 	jwt.RegisteredClaims
 }
 
@@ -58,7 +59,7 @@ func AuthMiddleware(authConfig config.AuthConfig) func(http.Handler) http.Handle
 
 			if claims, ok := token.Claims.(*UserClaims); ok && token.Valid {
 				// Check if user is admin for admin-only endpoints
-				if isAdminEndpoint(r.URL.Path) && !claims.IsAdmin {
+				if isAdminEndpoint(r.URL.Path) && !claims.IsSystemAdmin {
 					http.Error(w, "Admin access required", http.StatusForbidden)
 					return
 				}
@@ -75,10 +76,11 @@ func AuthMiddleware(authConfig config.AuthConfig) func(http.Handler) http.Handle
 }
 
 // GenerateToken generates a JWT token for a user
-func GenerateToken(username string, isAdmin bool, authConfig config.AuthConfig) (string, error) {
+func GenerateToken(username string, accountID string, isSystemAdmin bool, authConfig config.AuthConfig) (string, error) {
 	claims := UserClaims{
-		Username: username,
-		IsAdmin:  isAdmin,
+		Username:      username,
+		AccountID:     accountID,
+		IsSystemAdmin: isSystemAdmin,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(authConfig.TokenExpiryHours) * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

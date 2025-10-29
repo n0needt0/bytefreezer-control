@@ -1,5 +1,73 @@
 # ByteFreezer Control - Release Notes
 
+## v2.6.0: Account-Scoped Health Monitoring (2025-10-29)
+
+### Security Enhancement
+
+#### 🔐 Account-Scoped Service Health Reporting
+- **Security Issue**: Proxy services (customer-deployed) were using system-wide service API key
+  - System API key provides admin access to all accounts
+  - Single key compromise would affect entire system
+  - No service isolation or account scoping
+- **Solution**: Implemented account-scoped health reporting
+  - New endpoints: `/api/v1/accounts/{accountId}/services/register` and `/api/v1/accounts/{accountId}/services/report`
+  - Proxy now uses account-specific bearer_token (same as config polling)
+  - Each proxy instance is scoped to its account
+  - Account isolation enforced at API and database level
+- **Impact**:
+  - Customer-deployed proxies no longer need system API key
+  - Proxy compromise limited to single account
+  - System services (packer/piper/receiver) continue using system API key
+  - Proper multi-tenant isolation for service health data
+
+### Database Changes
+
+**Migration**: `004_health_account_scoping.sql`
+- Added `account_id` column to `health_current` and `health_history` tables
+- Updated unique constraint to support multiple accounts with same hostname
+- Modified `upsert_health_current()` function to accept account_id parameter
+- NULL account_id represents system services (backward compatible)
+
+### API Changes
+
+**New Endpoints** (Account-Scoped):
+- `POST /api/v1/accounts/{accountId}/services/register` - Register account service
+- `POST /api/v1/accounts/{accountId}/services/report` - Report health for account service
+- `GET /api/v1/accounts/{accountId}/services` - List services for account
+
+**Existing Endpoints** (System Services):
+- `POST /api/v1/health/register` - Register system service (unchanged)
+- `POST /api/v1/services/report` - Report health for system service (unchanged)
+
+### Files Changed
+
+**Control Service**:
+- `migrations/004_health_account_scoping.sql` (NEW)
+- `api/api.go:99-102`
+- `api/health_handlers.go:1-462` (added 3 new handlers)
+- `api/handlers.go:427`
+- `services/health.go:26,37,80-96,114,148-169,191-761` (added account_id support)
+
+### Authentication Flow
+
+**Before** (Insecure):
+```
+Proxy → [System API Key] → Control Service (admin access)
+```
+
+**After** (Secure):
+```
+Proxy → [Account Bearer Token] → Control Service → [Account-Scoped Data]
+System Services → [System API Key] → Control Service (admin access)
+```
+
+### Backward Compatibility
+
+- Existing system services (packer/piper/receiver) unaffected
+- NULL account_id in database represents system services
+- Existing health endpoints continue to work
+- Database migration is additive (no data loss)
+
 ## v2.5.0: S3 Test File Optimization (2025-10-24)
 
 ### Improvements

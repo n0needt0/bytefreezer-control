@@ -96,6 +96,11 @@ func (api *API) NewRouter() *web.Service {
 	service.Get("/api/v1/health/summary", api.GetHealthSummary())
 	service.Get("/api/v1/health/services/{serviceType}", api.GetServiceHealth())
 
+	// Account-scoped health endpoints (for proxy services)
+	service.Post("/api/v1/accounts/{accountId}/services/register", api.RegisterAccountService())
+	service.Post("/api/v1/accounts/{accountId}/services/report", api.ReceiveAccountServiceReport())
+	service.Get("/api/v1/accounts/{accountId}/services", api.ListAccountServices())
+
 	// Account management endpoints
 	service.Get("/api/v1/accounts", api.ListAccounts())
 	service.Get("/api/v1/accounts/{accountId}", api.GetAccount())

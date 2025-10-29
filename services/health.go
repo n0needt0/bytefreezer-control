@@ -23,6 +23,7 @@ type ServiceRegistration struct {
 	ServiceType   string                 `json:"service_type"`
 	InstanceID    string                 `json:"instance_id"`
 	InstanceAPI   string                 `json:"instance_api"`
+	AccountID     string                 `json:"account_id,omitempty"` // For account-scoped services (proxy)
 	Status        string                 `json:"status"`
 	Configuration map[string]interface{} `json:"configuration"`
 	Timestamp     time.Time              `json:"timestamp"`
@@ -33,6 +34,7 @@ type HealthRecord struct {
 	ServiceType    string                 `json:"service_type"`
 	InstanceID     string                 `json:"instance_id"`
 	InstanceAPI    string                 `json:"instance_api"`
+	AccountID      string                 `json:"account_id,omitempty"` // For account-scoped services (proxy)
 	Status         string                 `json:"status"`
 	Configuration  map[string]interface{} `json:"configuration"`
 	Metrics        map[string]interface{} `json:"metrics"`
@@ -75,15 +77,22 @@ func (h *HealthService) RegisterService(registration ServiceRegistration) error 
 		return fmt.Errorf("failed to marshal configuration: %w", err)
 	}
 
-	log.Infof("Registering service %s instance %s - config JSON: %s",
-		registration.ServiceType, registration.InstanceID, string(configJson))
+	log.Infof("Registering service %s instance %s (account: %s) - config JSON: %s",
+		registration.ServiceType, registration.InstanceID, registration.AccountID, string(configJson))
+
+	// Use NULL for account_id if empty (system services)
+	var accountID *string
+	if registration.AccountID != "" {
+		accountID = &registration.AccountID
+	}
 
 	_, err = h.db.Exec(`
-		SELECT upsert_health_current($1, $2, $3, $4, $5, NULL, NULL)`,
+		SELECT upsert_health_current($1, $2, $3, $4, $5, $6, NULL, NULL)`,
 		registration.ServiceType,
 		registration.InstanceID,
 		registration.InstanceAPI,
 		registration.Status,
+		accountID,
 		configJson,
 	)
 
@@ -102,7 +111,7 @@ func (h *HealthService) RegisterService(registration ServiceRegistration) error 
 // UpdateServiceHealth updates health status for a service instance
 // Uses upsert to handle cases where record doesn't exist (e.g., control was unavailable during registration)
 // Configuration should be provided on every update to keep it current
-func (h *HealthService) UpdateServiceHealth(serviceType, instanceID, instanceAPI, status string, config map[string]interface{}, metrics map[string]interface{}, responseTimeMs *int) error {
+func (h *HealthService) UpdateServiceHealth(serviceType, instanceID, instanceAPI, status, accountID string, config map[string]interface{}, metrics map[string]interface{}, responseTimeMs *int) error {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
@@ -136,17 +145,24 @@ func (h *HealthService) UpdateServiceHealth(serviceType, instanceID, instanceAPI
 		log.Debugf("Updating health for %s:%s - no configuration (nil)", serviceType, instanceID)
 	}
 
+	// Use NULL for account_id if empty (system services)
+	var accountIDValue *string
+	if accountID != "" {
+		accountIDValue = &accountID
+	}
+
 	// Use upsert to handle case where record doesn't exist
 	// This can happen if:
 	// - Control service was unavailable during initial registration
 	// - Data was deleted from database
 	// - Service sent health report before registration completed
 	_, err := h.db.Exec(`
-		SELECT upsert_health_current($1, $2, $3, $4, $5, $6, $7)`,
+		SELECT upsert_health_current($1, $2, $3, $4, $5, $6, $7, $8)`,
 		serviceType,
 		instanceID,
 		instanceAPI,
 		status,
+		accountIDValue,
 		configValue,
 		metricsValue,
 		responseTimeMs,
@@ -172,7 +188,7 @@ func (h *HealthService) GetAllHealthRecords() ([]HealthRecord, error) {
 	defer h.mutex.RUnlock()
 
 	rows, err := h.db.Query(`
-		SELECT id, service_type, instance_id, instance_api, status,
+		SELECT id, service_type, instance_id, instance_api, account_id, status,
 		       configuration, metrics, response_time_ms, last_seen, created_at, updated_at
 		FROM health_current
 		ORDER BY service_type, instance_id`)
@@ -187,11 +203,13 @@ func (h *HealthService) GetAllHealthRecords() ([]HealthRecord, error) {
 		var record HealthRecord
 		var configJson, metricsJson sql.NullString
 
+		var accountID sql.NullString
 		err := rows.Scan(
 			&record.ID,
 			&record.ServiceType,
 			&record.InstanceID,
 			&record.InstanceAPI,
+			&accountID,
 			&record.Status,
 			&configJson,
 			&metricsJson,
@@ -200,6 +218,9 @@ func (h *HealthService) GetAllHealthRecords() ([]HealthRecord, error) {
 			&record.CreatedAt,
 			&record.UpdatedAt,
 		)
+		if accountID.Valid {
+			record.AccountID = accountID.String
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan health record: %w", err)
 		}
@@ -231,7 +252,7 @@ func (h *HealthService) GetHealthRecordsByService(serviceType string) ([]HealthR
 	defer h.mutex.RUnlock()
 
 	rows, err := h.db.Query(`
-		SELECT id, service_type, instance_id, instance_api, status,
+		SELECT id, service_type, instance_id, instance_api, account_id, status,
 		       configuration, metrics, response_time_ms, last_seen, created_at, updated_at
 		FROM health_current
 		WHERE service_type = $1
@@ -247,11 +268,13 @@ func (h *HealthService) GetHealthRecordsByService(serviceType string) ([]HealthR
 		var record HealthRecord
 		var configJson, metricsJson sql.NullString
 
+		var accountID sql.NullString
 		err := rows.Scan(
 			&record.ID,
 			&record.ServiceType,
 			&record.InstanceID,
 			&record.InstanceAPI,
+			&accountID,
 			&record.Status,
 			&configJson,
 			&metricsJson,
@@ -260,6 +283,9 @@ func (h *HealthService) GetHealthRecordsByService(serviceType string) ([]HealthR
 			&record.CreatedAt,
 			&record.UpdatedAt,
 		)
+		if accountID.Valid {
+			record.AccountID = accountID.String
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan health record: %w", err)
 		}
@@ -291,7 +317,7 @@ func (h *HealthService) GetProxiesByAccount(accountID string) ([]HealthRecord, e
 	defer h.mutex.RUnlock()
 
 	rows, err := h.db.Query(`
-		SELECT id, service_type, instance_id, instance_api, status,
+		SELECT id, service_type, instance_id, instance_api, account_id, status,
 		       configuration, metrics, response_time_ms, last_seen, created_at, updated_at
 		FROM health_current
 		WHERE service_type = 'bytefreezer-proxy'
@@ -308,11 +334,13 @@ func (h *HealthService) GetProxiesByAccount(accountID string) ([]HealthRecord, e
 		var record HealthRecord
 		var configJson, metricsJson sql.NullString
 
+		var accountID sql.NullString
 		err := rows.Scan(
 			&record.ID,
 			&record.ServiceType,
 			&record.InstanceID,
 			&record.InstanceAPI,
+			&accountID,
 			&record.Status,
 			&configJson,
 			&metricsJson,
@@ -321,6 +349,9 @@ func (h *HealthService) GetProxiesByAccount(accountID string) ([]HealthRecord, e
 			&record.CreatedAt,
 			&record.UpdatedAt,
 		)
+		if accountID.Valid {
+			record.AccountID = accountID.String
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan proxy health record: %w", err)
 		}
@@ -379,7 +410,7 @@ func (h *HealthService) pollSingleService(record HealthRecord) {
 	if err != nil {
 		log.Warnf("Failed to create health check request for %s:%s: %v",
 			record.ServiceType, record.InstanceID, err)
-		h.UpdateServiceHealth(record.ServiceType, record.InstanceID, record.InstanceAPI, "Unhealthy", nil, nil, nil)
+		h.UpdateServiceHealth(record.ServiceType, record.InstanceID, record.InstanceAPI, "Unhealthy", record.AccountID, nil, nil, nil)
 		return
 	}
 
@@ -389,7 +420,7 @@ func (h *HealthService) pollSingleService(record HealthRecord) {
 	if err != nil {
 		log.Debugf("Health check failed for %s:%s: %v",
 			record.ServiceType, record.InstanceID, err)
-		h.UpdateServiceHealth(record.ServiceType, record.InstanceID, record.InstanceAPI, "Unhealthy", nil, nil, &responseTime)
+		h.UpdateServiceHealth(record.ServiceType, record.InstanceID, record.InstanceAPI, "Unhealthy", record.AccountID, nil, nil, &responseTime)
 		return
 	}
 	defer resp.Body.Close()
@@ -409,7 +440,7 @@ func (h *HealthService) pollSingleService(record HealthRecord) {
 		}
 	}
 
-	err = h.UpdateServiceHealth(record.ServiceType, record.InstanceID, record.InstanceAPI, status, nil, metrics, &responseTime)
+	err = h.UpdateServiceHealth(record.ServiceType, record.InstanceID, record.InstanceAPI, status, record.AccountID, nil, metrics, &responseTime)
 	if err != nil {
 		log.Warnf("Failed to update health status for %s:%s: %v",
 			record.ServiceType, record.InstanceID, err)
@@ -553,7 +584,7 @@ func (h *HealthService) UpdateSelfHealth(serviceType, instanceAPI string, config
 		hostname = "unknown"
 	}
 
-	return h.UpdateServiceHealth(serviceType, hostname, instanceAPI, "Healthy", config, metrics, nil)
+	return h.UpdateServiceHealth(serviceType, hostname, instanceAPI, "Healthy", "", config, metrics, nil)
 }
 
 // GetPluginSchemas returns plugin schemas from all registered proxy instances
@@ -595,4 +626,136 @@ func (h *HealthService) GetPluginSchemas() ([]map[string]interface{}, error) {
 	log.Infof("Retrieved %d unique plugin schemas from %d proxy instances", len(result), len(records))
 
 	return result, nil
+}
+
+// GetHealthRecordsByAccount returns health records for a specific account
+func (h *HealthService) GetHealthRecordsByAccount(accountID string) ([]HealthRecord, error) {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	rows, err := h.db.Query(`
+		SELECT id, service_type, instance_id, instance_api, account_id, status,
+		       configuration, metrics, response_time_ms, last_seen, created_at, updated_at
+		FROM health_current
+		WHERE account_id = $1
+		ORDER BY service_type, instance_id`, accountID)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query health records for account %s: %w", accountID, err)
+	}
+	defer rows.Close()
+
+	var records []HealthRecord
+	for rows.Next() {
+		var record HealthRecord
+		var configJson, metricsJson sql.NullString
+		var accountIDCol sql.NullString
+
+		err := rows.Scan(
+			&record.ID,
+			&record.ServiceType,
+			&record.InstanceID,
+			&record.InstanceAPI,
+			&accountIDCol,
+			&record.Status,
+			&configJson,
+			&metricsJson,
+			&record.ResponseTimeMs,
+			&record.LastSeen,
+			&record.CreatedAt,
+			&record.UpdatedAt,
+		)
+		if accountIDCol.Valid {
+			record.AccountID = accountIDCol.String
+		}
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan health record: %w", err)
+		}
+
+		// Parse JSON fields
+		if configJson.Valid {
+			if err := json.Unmarshal([]byte(configJson.String), &record.Configuration); err != nil {
+				log.Warnf("Failed to parse configuration JSON for %s:%s: %v",
+					record.ServiceType, record.InstanceID, err)
+			}
+		}
+
+		if metricsJson.Valid {
+			if err := json.Unmarshal([]byte(metricsJson.String), &record.Metrics); err != nil {
+				log.Warnf("Failed to parse metrics JSON for %s:%s: %v",
+					record.ServiceType, record.InstanceID, err)
+			}
+		}
+
+		records = append(records, record)
+	}
+
+	return records, nil
+}
+
+// GetHealthRecordsByAccountAndService returns health records for a specific account and service type
+func (h *HealthService) GetHealthRecordsByAccountAndService(accountID, serviceType string) ([]HealthRecord, error) {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	rows, err := h.db.Query(`
+		SELECT id, service_type, instance_id, instance_api, account_id, status,
+		       configuration, metrics, response_time_ms, last_seen, created_at, updated_at
+		FROM health_current
+		WHERE account_id = $1 AND service_type = $2
+		ORDER BY instance_id`, accountID, serviceType)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query health records for account %s, service %s: %w", accountID, serviceType, err)
+	}
+	defer rows.Close()
+
+	var records []HealthRecord
+	for rows.Next() {
+		var record HealthRecord
+		var configJson, metricsJson sql.NullString
+		var accountIDCol sql.NullString
+
+		err := rows.Scan(
+			&record.ID,
+			&record.ServiceType,
+			&record.InstanceID,
+			&record.InstanceAPI,
+			&accountIDCol,
+			&record.Status,
+			&configJson,
+			&metricsJson,
+			&record.ResponseTimeMs,
+			&record.LastSeen,
+			&record.CreatedAt,
+			&record.UpdatedAt,
+		)
+		if accountIDCol.Valid {
+			record.AccountID = accountIDCol.String
+		}
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan health record: %w", err)
+		}
+
+		// Parse JSON fields
+		if configJson.Valid {
+			if err := json.Unmarshal([]byte(configJson.String), &record.Configuration); err != nil {
+				log.Warnf("Failed to parse configuration JSON for %s:%s: %v",
+					record.ServiceType, record.InstanceID, err)
+			}
+		}
+
+		if metricsJson.Valid {
+			if err := json.Unmarshal([]byte(metricsJson.String), &record.Metrics); err != nil {
+				log.Warnf("Failed to parse metrics JSON for %s:%s: %v",
+					record.ServiceType, record.InstanceID, err)
+			}
+		}
+
+		records = append(records, record)
+	}
+
+	return records, nil
 }

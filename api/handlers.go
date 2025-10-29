@@ -424,6 +424,7 @@ func (api *API) ReceiveServiceReport() usecase.Interactor {
 				serviceID,            // instance_id (should be hostname)
 				input.InstanceAPI,    // instance_api
 				status,               // status
+				"",                   // account_id (empty for system services)
 				input.Configuration,  // configuration (updated on every report)
 				input.Metrics,        // metrics
 				nil,                  // response_time_ms will be set by polling

@@ -190,7 +190,7 @@ func (c *Client) ListAccounts(ctx context.Context, limit int) ([]Account, error)
 	// Add headers
 	req.Header.Set("Content-Type", "application/json")
 	if c.config.APIKey != "" {
-		req.Header.Set("X-API-Key", c.config.APIKey)
+		req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
 	}
 
 	// Make request
@@ -250,7 +250,7 @@ func (c *Client) ListDatasets(ctx context.Context, tenantID string, limit int) (
 	// Add headers
 	req.Header.Set("Content-Type", "application/json")
 	if c.config.APIKey != "" {
-		req.Header.Set("X-API-Key", c.config.APIKey)
+		req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
 	}
 
 	// Make request

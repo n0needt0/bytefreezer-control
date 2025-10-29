@@ -8,7 +8,7 @@
 - Errors without an account_id are only visible to system administrators
 
 ### Implementation
-When components report errors via `/api/v2/errors/track`, they should include:
+When components report errors via `/api/v1/errors/track`, they should include:
 - `account_id` - For account-scoped errors
 - `tenant_id` - For tenant-scoped errors (optional)
 - `dataset_id` - For dataset-scoped errors (optional)

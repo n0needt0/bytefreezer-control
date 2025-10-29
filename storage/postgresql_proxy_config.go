@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/lib/pq"
+	"github.com/n0needt0/go-goodies/log"
 )
 
 // UpsertProxyConfig creates or updates a proxy instance configuration
@@ -255,6 +256,72 @@ func (p *PostgreSQLStorage) ListAllProxyConfigs(ctx context.Context) ([]*ProxyIn
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating all proxy configs: %w", err)
 	}
+
+	return configs, nil
+}
+
+// ListProxyConfigsForAccount retrieves proxy configurations for a specific account (account-filtered)
+func (p *PostgreSQLStorage) ListProxyConfigsForAccount(ctx context.Context, accountID string) ([]*ProxyInstanceConfig, error) {
+	log.Debugf("Listing proxy configs for account_id=%s", accountID)
+
+	query := `
+		SELECT
+			pi.instance_id, pi.tenant_id, pi.instance_api, pi.config_mode,
+			pi.plugin_configs, pi.proxy_settings, pi.config_version, pi.config_hash,
+			pi.config_applied, pi.config_applied_at, pi.active, pi.created_at, pi.updated_at
+		FROM proxy_instances pi
+		INNER JOIN control_tenants t ON pi.tenant_id = t.id
+		WHERE t.account_id = $1 AND pi.active = true
+		ORDER BY pi.tenant_id ASC, pi.instance_id ASC`
+
+	rows, err := p.db.QueryContext(ctx, query, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list proxy configs for account %s: %w", accountID, err)
+	}
+	defer rows.Close()
+
+	configs := []*ProxyInstanceConfig{}
+	for rows.Next() {
+		var config ProxyInstanceConfig
+		var pluginConfigsJSON []byte
+		var proxySettingsJSON []byte
+
+		err := rows.Scan(
+			&config.InstanceID,
+			&config.TenantID,
+			&config.InstanceAPI,
+			&config.ConfigMode,
+			&pluginConfigsJSON,
+			&proxySettingsJSON,
+			&config.ConfigVersion,
+			&config.ConfigHash,
+			&config.ConfigApplied,
+			&config.ConfigAppliedAt,
+			&config.Active,
+			&config.CreatedAt,
+			&config.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan proxy config: %w", err)
+		}
+
+		// Unmarshal JSONB fields
+		if err := json.Unmarshal(pluginConfigsJSON, &config.PluginConfigs); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal plugin configs: %w", err)
+		}
+
+		if err := json.Unmarshal(proxySettingsJSON, &config.ProxySettings); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal proxy settings: %w", err)
+		}
+
+		configs = append(configs, &config)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating proxy configs for account: %w", err)
+	}
+
+	log.Debugf("Found %d proxy configs for account_id=%s", len(configs), accountID)
 
 	return configs, nil
 }

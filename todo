@@ -9,10 +9,14 @@ Avoid flattery, compliments, or positive language. Be clear and concise. Do not 
    proxy and piper are on tp1, receiver and packer on tp2, control on tp3
 - do not attempt ssh connections to db on .137 this is metallb for postgres only
 - when constructing data access logic always remember system account can see everything, account logins can only see their account data
+- stop messing with a code and api path we all on /v1 api
 
 
 
 requirements:
+
+
+
 
 i deployed latest control , i still see all errors on system erros page. thye are not filtered at all.
 only system administrators should see all errors, but all the other accoutns should only see their account errors

@@ -34,7 +34,7 @@
   # - my-tenant with your tenant_id
   # - YOUR_BEARER_TOKEN with your bearer token
 
-  curl -X PUT http://192.168.86.137:8080/api/v2/proxies/prod-proxy-01/config \
+  curl -X PUT http://192.168.86.137:8080/api/v1/proxies/prod-proxy-01/config \
     -H "Content-Type: application/json" \
     -d '{
     "tenant_id": "my-tenant",
@@ -139,7 +139,7 @@
 
   Step 1: Update Configuration in Control
   # Add a second plugin (ipfix on different port)
-  curl -X PUT http://192.168.86.137:8080/api/v2/proxies/prod-proxy-01/config \
+  curl -X PUT http://192.168.86.137:8080/api/v1/proxies/prod-proxy-01/config \
     -H "Content-Type: application/json" \
     -d '{
     "tenant_id": "my-tenant",
@@ -214,7 +214,7 @@
 
   Step 1: Create Port Conflict
   # Update config to use same port (2055) for both
-  curl -X PUT http://192.168.86.137:8080/api/v2/proxies/prod-proxy-01/config \
+  curl -X PUT http://192.168.86.137:8080/api/v1/proxies/prod-proxy-01/config \
     -H "Content-Type: application/json" \
     -d '{
     "tenant_id": "my-tenant",
@@ -269,7 +269,7 @@
   Test Scenario 5: View Configuration History
 
   Get Configuration History:
-  curl "http://192.168.86.137:8080/api/v2/proxies/prod-proxy-01/config/history?tenant_id=my-tenant&limit=5" | jq
+  curl "http://192.168.86.137:8080/api/v1/proxies/prod-proxy-01/config/history?tenant_id=my-tenant&limit=5" | jq
 
   Expected Response:
   {
@@ -317,7 +317,7 @@
   tail -f /path/to/proxy.log | grep -E "Config|Polling"
 
   # Terminal 2: Update config every 30 seconds
-  watch -n 30 'curl -X PUT http://192.168.86.137:8080/api/v2/proxies/prod-proxy-01/config -H "Content-Type: application/json" -d "{...}"'
+  watch -n 30 'curl -X PUT http://192.168.86.137:8080/api/v1/proxies/prod-proxy-01/config -H "Content-Type: application/json" -d "{...}"'
 
   Testing Checklist
 

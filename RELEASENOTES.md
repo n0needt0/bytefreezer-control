@@ -81,7 +81,7 @@ If you have `auth.admin_users` in your config.yaml:
 ### Features
 
 #### New Proxy Configuration Endpoint for Account-Based Polling
-- **Account-Level Configuration API**: New endpoint `/api/v2/proxy/config?account_id={accountID}` returns all tenants and datasets for an account
+- **Account-Level Configuration API**: New endpoint `/api/v1/proxy/config?account_id={accountID}` returns all tenants and datasets for an account
   - Single API call returns complete configuration for proxy instances
   - Eliminates need for multiple API calls per tenant
   - Supports multi-tenant proxy deployments
@@ -130,7 +130,7 @@ If you have `auth.admin_users` in your config.yaml:
 
 #### Configuration Reporting
 - **Proxy Status Tracking**: Proxy reports applied configuration back to Control for each tenant
-  - Uses existing `/api/v2/proxies/{instanceId}/config` endpoint
+  - Uses existing `/api/v1/proxies/{instanceId}/config` endpoint
   - Stores which plugins are configured for each tenant
   - Enables dataset test endpoint to show which proxies have plugins active
 
@@ -138,7 +138,7 @@ If you have `auth.admin_users` in your config.yaml:
 
 **New API Endpoint**:
 ```go
-GET /api/v2/proxy/config?account_id={accountID}
+GET /api/v1/proxy/config?account_id={accountID}
 Authorization: Bearer {token}
 
 Response: ControlConfiguration with all tenants + datasets
@@ -174,7 +174,7 @@ func (api *API) GetProxyConfiguration() usecase.Interactor {
 ### Files Modified
 
 **Backend**:
-- `api/api.go` - Added `/api/v2/proxy/config` route (line 155)
+- `api/api.go` - Added `/api/v1/proxy/config` route (line 155)
 - `api/proxy_config_handlers.go` - GetProxyConfiguration handler (lines 285-340)
 - `api/proxy_config_handlers.go` - Removed dataset_id validation (line 133-135)
 
@@ -673,13 +673,13 @@ Comprehensive system for managing proxy instance configurations centrally.
 - SHA256 hash-based change detection
 - Trigger-based automatic history archiving
 
-**API Endpoints** (`/api/v2/proxies/*`):
-- `GET /api/v2/proxies` - List all proxy instances (filterable by tenant)
-- `GET /api/v2/proxies/{instanceId}/config?tenant_id={tid}` - Get proxy configuration
-- `PUT /api/v2/proxies/{instanceId}/config` - Create/update proxy configuration
-- `POST /api/v2/proxies/{instanceId}/config/applied` - Mark configuration as applied
-- `GET /api/v2/proxies/{instanceId}/config/history?tenant_id={tid}` - Get configuration history
-- `DELETE /api/v2/proxies/{instanceId}?tenant_id={tid}` - Delete proxy instance
+**API Endpoints** (`/api/v1/proxies/*`):
+- `GET /api/v1/proxies` - List all proxy instances (filterable by tenant)
+- `GET /api/v1/proxies/{instanceId}/config?tenant_id={tid}` - Get proxy configuration
+- `PUT /api/v1/proxies/{instanceId}/config` - Create/update proxy configuration
+- `POST /api/v1/proxies/{instanceId}/config/applied` - Mark configuration as applied
+- `GET /api/v1/proxies/{instanceId}/config/history?tenant_id={tid}` - Get configuration history
+- `DELETE /api/v1/proxies/{instanceId}?tenant_id={tid}` - Delete proxy instance
 
 #### 📋 Configuration Structure
 Each proxy instance configuration includes:
@@ -694,7 +694,7 @@ Each proxy instance configuration includes:
 
 1. **Create/Update Configuration**:
    ```bash
-   PUT /api/v2/proxies/{instanceId}/config
+   PUT /api/v1/proxies/{instanceId}/config
    {
      "tenant_id": "my-tenant",
      "instance_api": "proxy-01:8080",
@@ -709,14 +709,14 @@ Each proxy instance configuration includes:
 
 2. **Proxy Polls Configuration**:
    ```bash
-   GET /api/v2/proxies/{instanceId}/config?tenant_id={tid}
+   GET /api/v1/proxies/{instanceId}/config?tenant_id={tid}
    ```
    - Returns current configuration with version and hash
    - Proxy compares hash to detect changes
 
 3. **Proxy Reports Applied Status**:
    ```bash
-   POST /api/v2/proxies/{instanceId}/config/applied
+   POST /api/v1/proxies/{instanceId}/config/applied
    {
      "tenant_id": "my-tenant",
      "config_version": 3
@@ -727,7 +727,7 @@ Each proxy instance configuration includes:
 
 4. **View Configuration History**:
    ```bash
-   GET /api/v2/proxies/{instanceId}/config/history?tenant_id={tid}&limit=10
+   GET /api/v1/proxies/{instanceId}/config/history?tenant_id={tid}&limit=10
    ```
    - Returns last N configuration versions
    - Includes change timestamps and version numbers

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/n0needt0/bytefreezer-control/middleware"
 	"github.com/n0needt0/bytefreezer-control/storage"
 	"github.com/n0needt0/go-goodies/log"
 	"github.com/swaggest/usecase"
@@ -22,23 +23,41 @@ func (api *API) ListProxyInstances() usecase.Interactor {
 	}
 
 	u := usecase.NewInteractor(func(ctx context.Context, input listProxyInput, output *listProxyOutput) error {
+		// Get account_id from JWT claims for account-based filtering
+		accountID := middleware.GetAccountIDFromContext(ctx)
+		isSystemAdmin := middleware.IsSystemAdmin(ctx)
+
 		var proxies []*storage.ProxyInstanceConfig
 		var err error
 
 		if input.TenantID != "" {
-			// List proxies for specific tenant
+			// List proxies for specific tenant (keep existing behavior)
+			log.Debugf("Listing proxy configs for tenant_id=%s", input.TenantID)
 			proxies, err = api.Services.Storage.ListProxyConfigs(ctx, input.TenantID)
 			if err != nil {
 				log.Errorf("Failed to list proxy configs for tenant %s: %v", input.TenantID, err)
 				return usecaseStatus.Wrap(fmt.Errorf("failed to list proxy instances"), usecaseStatus.Internal)
 			}
-		} else {
-			// List all proxies
+		} else if isSystemAdmin {
+			// System admin: list all proxies without account filtering
+			log.Debugf("System admin requesting all proxy configs")
 			proxies, err = api.Services.Storage.ListAllProxyConfigs(ctx)
 			if err != nil {
 				log.Errorf("Failed to list all proxy configs: %v", err)
 				return usecaseStatus.Wrap(fmt.Errorf("failed to list proxy instances"), usecaseStatus.Internal)
 			}
+		} else if accountID != "" {
+			// Regular user: list only proxies belonging to their account
+			log.Debugf("User from account %s requesting proxy configs (filtered by account)", accountID)
+			proxies, err = api.Services.Storage.ListProxyConfigsForAccount(ctx, accountID)
+			if err != nil {
+				log.Errorf("Failed to list proxy configs for account %s: %v", accountID, err)
+				return usecaseStatus.Wrap(fmt.Errorf("failed to list proxy instances"), usecaseStatus.Internal)
+			}
+		} else {
+			// No JWT claims: return empty result (auth is always required)
+			log.Warnf("No account_id found in JWT claims, returning empty proxy config list")
+			proxies = []*storage.ProxyInstanceConfig{}
 		}
 
 		// Convert to non-pointer slice for output

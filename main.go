@@ -264,7 +264,7 @@ func (svc *Server) buildControlConfiguration() map[string]interface{} {
 		"timeout":         fmt.Sprintf("%ds", svc.Config.HealthReporting.TimeoutSeconds),
 		"api": map[string]interface{}{
 			"port":         svc.Config.Server.ApiPort,
-			"auth_enabled": svc.Config.Auth.Enabled,
+			"auth_enabled": true, // Auth is always enabled
 		},
 		"database": map[string]interface{}{
 			"enabled":  svc.Config.Database.Enabled,

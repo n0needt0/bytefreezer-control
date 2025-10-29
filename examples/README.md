@@ -85,9 +85,9 @@ go run populate_fake_data_simple.go "postgres://postgres:postgres@localhost:5432
   Datasets: 11
 
 🔗 Control Service API Usage:
-  List tenants:   GET http://localhost:8080/api/v2/accounts/dev-account/tenants
-  Get tenant:     GET http://localhost:8080/api/v2/accounts/dev-account/tenants/customer-1
-  List datasets:  GET http://localhost:8080/api/v2/accounts/dev-account/tenants/customer-1/datasets
+  List tenants:   GET http://localhost:8080/api/v1/accounts/dev-account/tenants
+  Get tenant:     GET http://localhost:8080/api/v1/accounts/dev-account/tenants/customer-1
+  List datasets:  GET http://localhost:8080/api/v1/accounts/dev-account/tenants/customer-1/datasets
 
 ⚙️  Service Configuration:
 control_service:
@@ -163,13 +163,13 @@ pipeline:
 2. **Verify tenant data:**
    ```bash
    # List tenants
-   curl http://localhost:8080/api/v2/accounts/dev-account/tenants
+   curl http://localhost:8080/api/v1/accounts/dev-account/tenants
 
    # Get specific tenant
-   curl http://localhost:8080/api/v2/accounts/dev-account/tenants/customer-1
+   curl http://localhost:8080/api/v1/accounts/dev-account/tenants/customer-1
 
    # List datasets
-   curl http://localhost:8080/api/v2/accounts/dev-account/tenants/customer-1/datasets
+   curl http://localhost:8080/api/v1/accounts/dev-account/tenants/customer-1/datasets
    ```
 
 3. **Start receiver/packer/piper with Control Service enabled:**

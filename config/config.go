@@ -77,7 +77,6 @@ type HousekeepingConfig struct {
 }
 
 type AuthConfig struct {
-	Enabled          bool   `yaml:"enabled"`
 	JWTSecret        string `yaml:"jwt_secret"`
 	TokenExpiryHours int    `yaml:"token_expiry_hours"`
 }

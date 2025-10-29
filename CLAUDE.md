@@ -49,7 +49,7 @@ When working on ANY ByteFreezer project, always follow these steps:
 - [ ] Consider impact on dependent services
 
 ### 5. API Changes (For Services with APIs)
-- [ ] Follow existing API patterns (usually `/api/v2/` for ByteFreezer)
+- [ ] Follow existing API patterns (usually `/api/v1/` for ByteFreezer)
 - [ ] Add new endpoints to appropriate router files
 - [ ] Create request/response structs with proper JSON tags
 - [ ] Test with curl examples or appropriate testing tools
@@ -113,7 +113,7 @@ When working on ANY ByteFreezer project, always follow these steps:
 ### APIs
 - Follow REST conventions where applicable
 - Use consistent JSON response formats
-- Include API versioning (typically `/api/v2/`)
+- Include API versioning (typically `/api/v1/`)
 - Provide comprehensive error responses
 - Document with examples
 

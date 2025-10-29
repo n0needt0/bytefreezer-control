@@ -187,8 +187,8 @@ services:
 
   proxy:
     url: "http://bytefreezer-proxy:8088"
-    health_endpoint: "/api/v2/health"
-    config_endpoint: "/api/v2/config"
+    health_endpoint: "/api/v1/health"
+    config_endpoint: "/api/v1/config"
     timeout_seconds: 30
 
   soc:

@@ -57,11 +57,9 @@ func (api *API) NewRouter() *web.Service {
 		log.Info("Rate limiting middleware enabled")
 	}
 
-	// Add authentication middleware if enabled (but exclude public endpoints)
-	if api.Config.Auth.Enabled {
-		service.Use(middleware.ConditionalJWTAuthMiddleware(api.Config.Auth, api.Services.Auth))
-		log.Info("JWT authentication middleware enabled")
-	}
+	// Add authentication middleware (always enabled, but exclude public endpoints)
+	service.Use(middleware.ConditionalJWTAuthMiddleware(api.Config.Auth, api.Services.Auth))
+	log.Info("JWT authentication middleware enabled")
 
 	// Add audit middleware to extract user info and IP for audit logging
 	// This must come AFTER auth middleware so JWT claims are available in context
@@ -133,15 +131,6 @@ func (api *API) NewRouter() *web.Service {
 	service.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/metrics", api.QueryDatasetMetrics())
 	service.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/metrics/aggregated", api.GetAggregatedMetrics())
 
-	// Error tracking endpoints (v2)
-	service.Post("/api/v2/errors/track", api.TrackError())
-	service.Get("/api/v2/errors", api.ListErrors())
-	service.Get("/api/v2/errors/{errorId}", api.GetError())
-	service.Patch("/api/v2/errors/{errorId}/status", api.UpdateErrorStatus())
-	service.Get("/api/v2/errors/stats", api.GetErrorStats())
-	service.Get("/api/v2/errors/recent", api.GetRecentErrors())
-	service.Get("/api/v2/tenants/{tenantId}/datasets/{datasetId}/errors", api.GetDatasetErrors())
-
 	// User management endpoints
 	service.Get("/api/v1/users", api.ListUsers())
 	service.Get("/api/v1/users/{userId}", api.GetUser())
@@ -160,16 +149,16 @@ func (api *API) NewRouter() *web.Service {
 	// Account proxy health endpoints
 	service.Get("/api/v1/accounts/{account_id}/proxies", api.GetAccountProxies())
 
-	// Proxy configuration management endpoints (v2)
-	service.Get("/api/v2/proxies", api.ListProxyInstances())
-	service.Get("/api/v2/proxies/{instanceId}/config", api.GetProxyConfig())
-	service.Put("/api/v2/proxies/{instanceId}/config", api.UpsertProxyConfig())
-	service.Post("/api/v2/proxies/{instanceId}/config/applied", api.MarkProxyConfigApplied())
-	service.Get("/api/v2/proxies/{instanceId}/config/history", api.GetProxyConfigHistory())
-	service.Delete("/api/v2/proxies/{instanceId}", api.DeleteProxyInstance())
+	// Proxy configuration management endpoints
+	service.Get("/api/v1/proxies", api.ListProxyInstances())
+	service.Get("/api/v1/proxies/{instanceId}/config", api.GetProxyConfig())
+	service.Put("/api/v1/proxies/{instanceId}/config", api.UpsertProxyConfig())
+	service.Post("/api/v1/proxies/{instanceId}/config/applied", api.MarkProxyConfigApplied())
+	service.Get("/api/v1/proxies/{instanceId}/config/history", api.GetProxyConfigHistory())
+	service.Delete("/api/v1/proxies/{instanceId}", api.DeleteProxyInstance())
 
 	// Proxy configuration polling endpoint (returns tenants + datasets for account)
-	service.Get("/api/v2/proxy/config", api.GetProxyConfiguration())
+	service.Get("/api/v1/proxy/config", api.GetProxyConfiguration())
 
 	// API documentation
 	service.Docs("/v1/docs", swgui.New)

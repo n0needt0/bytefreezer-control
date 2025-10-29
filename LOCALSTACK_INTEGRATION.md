@@ -145,8 +145,8 @@ kubectl port-forward svc/bytefreezer-control 8082:8082 -n bytefreezer-control &
 curl http://localhost:4566/_localstack/health
 
 # 3. Test ByteFreezer Control
-curl http://localhost:8082/api/v2/health
-curl http://localhost:8082/api/v2/config
+curl http://localhost:8082/api/v1/health
+curl http://localhost:8082/api/v1/config
 
 # 4. Test AWS services via LocalStack
 aws --endpoint-url=http://localhost:4566 s3 ls
@@ -226,7 +226,7 @@ kubectl logs -f deployment/bytefreezer-control -n bytefreezer-control
 
 ### **Health Endpoints**
 - **LocalStack**: `http://localstack-internal.localstack.svc.cluster.local:4566/_localstack/health`
-- **Control**: `http://bytefreezer-control.bytefreezer-control.svc.cluster.local:8082/api/v2/health`
+- **Control**: `http://bytefreezer-control.bytefreezer-control.svc.cluster.local:8082/api/v1/health`
 
 ### **Service Mesh Integration**
 If using Istio service mesh:
@@ -278,7 +278,7 @@ devspace dev --var LOCALSTACK_ENDPOINT=localstack-internal.localstack.svc.cluste
   run: |
     ./test-localstack-integration.sh
     kubectl wait --for=condition=available deployment/bytefreezer-control -n bytefreezer-control
-    curl -f http://localhost:8082/api/v2/health
+    curl -f http://localhost:8082/api/v1/health
 ```
 
 ## 🎯 **Production Considerations**

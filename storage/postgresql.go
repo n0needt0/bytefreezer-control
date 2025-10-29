@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/lib/pq"
+	"github.com/n0needt0/go-goodies/log"
 	_ "github.com/lib/pq"
 )
 
@@ -471,6 +472,53 @@ func (p *PostgreSQLStorage) ListAllTenants(ctx context.Context, opts ListOptions
 	}, nil
 }
 
+// ListTenantsForAccount lists tenants for a specific account (account-filtered)
+func (p *PostgreSQLStorage) ListTenantsForAccount(ctx context.Context, accountID string, opts ListOptions) (*ListResult[Tenant], error) {
+	if opts.Limit <= 0 {
+		opts.Limit = 100
+	}
+
+	log.Debugf("Listing tenants for account_id=%s with limit=%d", accountID, opts.Limit)
+
+	query := `
+		SELECT id, account_id, name, description, active, created_at, updated_at, config
+		FROM control_tenants
+		WHERE account_id = $1
+		ORDER BY created_at DESC
+		LIMIT $2`
+
+	rows, err := p.db.QueryContext(ctx, query, accountID, opts.Limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list tenants for account %s: %w", accountID, err)
+	}
+	defer rows.Close()
+
+	var tenants []Tenant
+	for rows.Next() {
+		var tenant Tenant
+		var configJSON []byte
+
+		err := rows.Scan(&tenant.ID, &tenant.AccountID, &tenant.Name, &tenant.Description, &tenant.Active,
+			&tenant.CreatedAt, &tenant.UpdatedAt, &configJSON)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan tenant: %w", err)
+		}
+
+		if err := json.Unmarshal(configJSON, &tenant.Config); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal tenant config: %w", err)
+		}
+
+		tenants = append(tenants, tenant)
+	}
+
+	log.Debugf("Found %d tenants for account_id=%s", len(tenants), accountID)
+
+	return &ListResult[Tenant]{
+		Items: tenants,
+		Total: len(tenants),
+	}, nil
+}
+
 // Advanced tenant queries using PostgreSQL JSONB operations
 func (p *PostgreSQLStorage) FindTenantsBySubscriptionTier(ctx context.Context, tier string) ([]*Tenant, error) {
 	query := `
@@ -897,6 +945,94 @@ func (p *PostgreSQLStorage) ListAllDatasets(ctx context.Context, opts ListOption
 	return &ListResult[Dataset]{
 		Items: datasets,
 		Total: total,
+	}, nil
+}
+
+// ListDatasetsForAccount returns all datasets belonging to tenants under a specific account
+func (p *PostgreSQLStorage) ListDatasetsForAccount(ctx context.Context, accountID string, opts ListOptions) (*ListResult[Dataset], error) {
+	query := `
+		SELECT d.id, d.tenant_id, d.name, d.display_name, d.description, d.active, d.status,
+			d.created_at, d.updated_at, d.config, d.records_processed, d.last_processed_at,
+			d.error_count, d.last_error, d.input_test_status, d.input_test_message,
+			d.output_test_status, d.output_test_message, d.last_tested_at
+		FROM control_datasets d
+		INNER JOIN control_tenants t ON d.tenant_id = t.id
+		WHERE t.account_id = $1`
+
+	args := []interface{}{accountID}
+	argIndex := 2
+
+	// Add filtering if specified
+	if opts.Filter != "" {
+		query += fmt.Sprintf(" AND (d.name ILIKE $%d OR d.description ILIKE $%d)", argIndex, argIndex+1)
+		filterPattern := "%" + opts.Filter + "%"
+		args = append(args, filterPattern, filterPattern)
+		argIndex += 2
+	}
+
+	// Add ordering and pagination
+	query += " ORDER BY d.created_at DESC"
+	if opts.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT $%d", argIndex)
+		args = append(args, opts.Limit)
+	} else {
+		query += " LIMIT 100" // Default limit for safety
+	}
+
+	rows, err := p.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list datasets for account %s: %w", accountID, err)
+	}
+	defer rows.Close()
+
+	var datasets []Dataset
+	for rows.Next() {
+		var dataset Dataset
+		var configJSON []byte
+		var lastError sql.NullString
+		var inputTestMessage sql.NullString
+		var outputTestMessage sql.NullString
+
+		err := rows.Scan(
+			&dataset.ID, &dataset.TenantID, &dataset.Name, &dataset.DisplayName, &dataset.Description,
+			&dataset.Active, &dataset.Status, &dataset.CreatedAt, &dataset.UpdatedAt,
+			&configJSON, &dataset.RecordsProcessed, &dataset.LastProcessedAt,
+			&dataset.ErrorCount, &lastError,
+			&dataset.InputTestStatus, &inputTestMessage, &dataset.OutputTestStatus,
+			&outputTestMessage, &dataset.LastTestedAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan dataset: %w", err)
+		}
+
+		// Parse config JSON
+		if len(configJSON) > 0 {
+			if err := json.Unmarshal(configJSON, &dataset.Config); err != nil {
+				log.Warnf("Failed to unmarshal dataset config for %s: %v", dataset.ID, err)
+				dataset.Config = DatasetConfig{} // Set empty config on error
+			}
+		}
+
+		// Handle nullable fields
+		if lastError.Valid {
+			dataset.LastError = lastError.String
+		}
+		if inputTestMessage.Valid {
+			dataset.InputTestMessage = inputTestMessage.String
+		}
+		if outputTestMessage.Valid {
+			dataset.OutputTestMessage = outputTestMessage.String
+		}
+
+		datasets = append(datasets, dataset)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating datasets: %w", err)
+	}
+
+	return &ListResult[Dataset]{
+		Items: datasets,
+		Total: len(datasets),
 	}, nil
 }
 

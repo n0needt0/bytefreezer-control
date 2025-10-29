@@ -128,7 +128,7 @@ kubectl delete pvc -l app.kubernetes.io/name=bytefreezer-control
 kubectl port-forward svc/bytefreezer-control 8082:8082
 
 # Check health
-curl http://localhost:8082/api/v2/health
+curl http://localhost:8082/api/v1/health
 ```
 
 ### Logs

@@ -145,31 +145,6 @@ type ComponentMetrics struct {
 	EndTime        time.Time `json:"end_time"`
 }
 
-// SystemError represents a tracked error with deduplication and sampling
-type SystemError struct {
-	ID               int64                  `json:"id" db:"id"`
-	ErrorHash        string                 `json:"error_hash" db:"error_hash"`
-	ErrorType        string                 `json:"error_type" db:"error_type"`
-	Component        string                 `json:"component" db:"component"`
-	AccountID        string                 `json:"account_id,omitempty" db:"account_id"`
-	TenantID         string                 `json:"tenant_id,omitempty" db:"tenant_id"`
-	DatasetID        string                 `json:"dataset_id,omitempty" db:"dataset_id"`
-	ErrorMessage     string                 `json:"error_message" db:"error_message"`
-	ErrorSample      map[string]interface{} `json:"error_sample,omitempty" db:"error_sample"`
-	Severity         string                 `json:"severity" db:"severity"`
-	Status           string                 `json:"status" db:"status"`
-	OccurrenceCount  int64                  `json:"occurrence_count" db:"occurrence_count"`
-	FirstSeen        time.Time              `json:"first_seen" db:"first_seen"`
-	LastSeen         time.Time              `json:"last_seen" db:"last_seen"`
-	SampleRate       float64                `json:"sample_rate" db:"sample_rate"`
-	SamplesCollected int                    `json:"samples_collected" db:"samples_collected"`
-	SamplesDropped   int                    `json:"samples_dropped" db:"samples_dropped"`
-	Metadata         map[string]interface{} `json:"metadata,omitempty" db:"metadata"`
-	CreatedAt        time.Time              `json:"created_at" db:"created_at"`
-	UpdatedAt        time.Time              `json:"updated_at" db:"updated_at"`
-	ResolvedAt       *time.Time             `json:"resolved_at,omitempty" db:"resolved_at"`
-}
-
 // AuditLog represents an audit log entry for tracking user actions
 type AuditLog struct {
 	ID           int64                  `json:"id" db:"id"`
@@ -232,7 +207,8 @@ type Storage interface {
 	UpdateTenant(ctx context.Context, tenant *Tenant) error
 	DeleteTenant(ctx context.Context, accountID, tenantID string) error
 	ListTenants(ctx context.Context, accountID string, opts ListOptions) (*ListResult[Tenant], error)
-	ListAllTenants(ctx context.Context, opts ListOptions) (*ListResult[Tenant], error) // List all tenants across all accounts
+	ListAllTenants(ctx context.Context, opts ListOptions) (*ListResult[Tenant], error)         // List all tenants across all accounts
+	ListTenantsForAccount(ctx context.Context, accountID string, opts ListOptions) (*ListResult[Tenant], error) // List tenants for a specific account
 
 	// Advanced tenant queries
 	FindTenantsBySubscriptionTier(ctx context.Context, tier string) ([]*Tenant, error)
@@ -246,6 +222,7 @@ type Storage interface {
 	DeleteDataset(ctx context.Context, tenantID, datasetID string, skipS3Cleanup bool) error
 	ListDatasets(ctx context.Context, tenantID string, opts ListOptions) (*ListResult[Dataset], error)
 	ListAllDatasets(ctx context.Context, opts ListOptions) (*ListResult[Dataset], error) // List all datasets across all tenants
+	ListDatasetsForAccount(ctx context.Context, accountID string, opts ListOptions) (*ListResult[Dataset], error) // List datasets for a specific account
 	
 	// Advanced dataset queries
 	FindDatasetsByStatus(ctx context.Context, tenantID, status string) ([]*Dataset, error)
@@ -269,6 +246,7 @@ type Storage interface {
 	GetProxyConfig(ctx context.Context, instanceID, tenantID string) (*ProxyInstanceConfig, error)
 	ListProxyConfigs(ctx context.Context, tenantID string) ([]*ProxyInstanceConfig, error)
 	ListAllProxyConfigs(ctx context.Context) ([]*ProxyInstanceConfig, error)
+	ListProxyConfigsForAccount(ctx context.Context, accountID string) ([]*ProxyInstanceConfig, error) // List proxy configs for a specific account
 	DeleteProxyConfig(ctx context.Context, instanceID, tenantID string) error
 	MarkProxyConfigApplied(ctx context.Context, instanceID, tenantID string, configVersion int) error
 	GetProxyConfigHistory(ctx context.Context, instanceID, tenantID string, limit int) ([]*ProxyConfigHistory, error)

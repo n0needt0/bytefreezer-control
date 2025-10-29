@@ -82,10 +82,10 @@ config:
     interval_seconds: 300  # 5 minutes
   
   # Authentication and authorization
-  # Note: Admin roles (system_admin, account_admin, account_readonly) are managed in the database (control_users.role)
+  # Note: Auth is ALWAYS ENABLED. Admin roles (system_admin, account_admin, account_readonly) are managed in the database (control_users.role)
+  # Service health reporting uses static API key (bearer_token) defined per service
   auth:
-    enabled: false  # Disabled for easier browser testing
-    jwt_secret: "your-jwt-secret-key-here"
+    jwt_secret: "bytefreezer-control-jwt-secret-966c5b3e-597c-4b2c-96fb-86d2ffc312fe"  # Strong secret for signing JWTs
     token_expiry_hours: 24
 
   # Rate limiting

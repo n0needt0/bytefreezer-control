@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/n0needt0/bytefreezer-control/middleware"
 	"github.com/n0needt0/bytefreezer-control/services"
 	"github.com/n0needt0/bytefreezer-control/storage"
 	"github.com/n0needt0/go-goodies/log"
@@ -95,8 +96,7 @@ type DatabaseConfigResponse struct {
 }
 
 type AuthConfigResponse struct {
-	Enabled          bool `json:"enabled"`
-	TokenExpiryHours int  `json:"token_expiry_hours"`
+	TokenExpiryHours int `json:"token_expiry_hours"`
 }
 
 type RateLimitConfigResponse struct {
@@ -148,7 +148,6 @@ func (api *API) GetConfig() usecase.Interactor {
 		}
 
 		output.Auth = AuthConfigResponse{
-			Enabled:          api.Config.Auth.Enabled,
 			TokenExpiryHours: api.Config.Auth.TokenExpiryHours,
 		}
 
@@ -178,7 +177,6 @@ func (api *API) UpdateConfig() usecase.Interactor {
 	u := usecase.NewInteractor(func(ctx context.Context, input updateConfigInput, output *ConfigResponse) error {
 		// Update auth configuration if provided
 		if input.Auth != nil {
-			api.Config.Auth.Enabled = input.Auth.Enabled
 			api.Config.Auth.TokenExpiryHours = input.Auth.TokenExpiryHours
 		}
 
@@ -203,7 +201,6 @@ func (api *API) UpdateConfig() usecase.Interactor {
 		}
 
 		output.Auth = AuthConfigResponse{
-			Enabled:          api.Config.Auth.Enabled,
 			TokenExpiryHours: api.Config.Auth.TokenExpiryHours,
 		}
 
@@ -1771,9 +1768,32 @@ func (api *API) ListUsers() usecase.Interactor {
 			return fmt.Errorf("authentication service not available")
 		}
 
-		users, err := api.Services.Auth.ListUsers(ctx, input.AccountID)
-		if err != nil {
-			return fmt.Errorf("failed to list users: %w", err)
+		// Get account_id from JWT claims for account-based filtering
+		accountID := middleware.GetAccountIDFromContext(ctx)
+		isSystemAdmin := middleware.IsSystemAdmin(ctx)
+
+		var users []services.User
+
+		if isSystemAdmin {
+			// System admin: pass empty string to see all users
+			log.Debugf("System admin requesting all users")
+			var err error
+			users, err = api.Services.Auth.ListUsers(ctx, "")
+			if err != nil {
+				return fmt.Errorf("failed to list users: %w", err)
+			}
+		} else if accountID != "" {
+			// Regular user: filter by their account_id
+			log.Debugf("User from account %s requesting users (filtered by account)", accountID)
+			var err error
+			users, err = api.Services.Auth.ListUsers(ctx, accountID)
+			if err != nil {
+				return fmt.Errorf("failed to list users: %w", err)
+			}
+		} else {
+			// No JWT claims: return empty result (auth is always required)
+			log.Warnf("No account_id found in JWT claims, returning empty user list")
+			users = []services.User{}
 		}
 
 		output.Items = users
@@ -2077,9 +2097,29 @@ func (api *API) ListAllTenants() usecase.Interactor {
 			Limit: input.Limit,
 		}
 
-		result, err := api.Services.Storage.ListAllTenants(ctx, opts)
+		// Get account_id from JWT claims for account-based filtering
+		accountID := middleware.GetAccountIDFromContext(ctx)
+		isSystemAdmin := middleware.IsSystemAdmin(ctx)
+
+		var result *storage.ListResult[storage.Tenant]
+		var err error
+
+		if isSystemAdmin {
+			// System admin: list all tenants without account filtering
+			log.Debugf("System admin requesting all tenants")
+			result, err = api.Services.Storage.ListAllTenants(ctx, opts)
+		} else if accountID != "" {
+			// Regular user: list only tenants belonging to their account
+			log.Debugf("User from account %s requesting tenants (filtered by account)", accountID)
+			result, err = api.Services.Storage.ListTenantsForAccount(ctx, accountID, opts)
+		} else {
+			// No JWT claims: return empty result (auth is always required)
+			log.Warnf("No account_id found in JWT claims, returning empty tenant list")
+			result = &storage.ListResult[storage.Tenant]{Items: []storage.Tenant{}, Total: 0}
+		}
+
 		if err != nil {
-			return fmt.Errorf("failed to list all tenants: %w", err)
+			return fmt.Errorf("failed to list tenants: %w", err)
 		}
 
 		output.Items = result.Items
@@ -2121,9 +2161,28 @@ func (api *API) ListAllDatasets() usecase.Interactor {
 			Filter: input.Search,
 		}
 
-		result, err := api.Services.Storage.ListAllDatasets(ctx, opts)
+		// Get account_id from JWT claims for filtering
+		// System admins see all datasets, regular users see only their account's datasets
+		accountID := middleware.GetAccountIDFromContext(ctx)
+		isSystemAdmin := middleware.IsSystemAdmin(ctx)
+
+		var result *storage.ListResult[storage.Dataset]
+		var err error
+
+		if isSystemAdmin {
+			// System admin: list all datasets without account filtering
+			result, err = api.Services.Storage.ListAllDatasets(ctx, opts)
+		} else if accountID != "" {
+			// Regular user: list only datasets belonging to their account
+			result, err = api.Services.Storage.ListDatasetsForAccount(ctx, accountID, opts)
+		} else {
+			// No JWT claims: return empty result (auth is always required)
+			log.Warnf("No account_id found in JWT claims, returning empty dataset list")
+			result = &storage.ListResult[storage.Dataset]{Items: []storage.Dataset{}, Total: 0}
+		}
+
 		if err != nil {
-			return fmt.Errorf("failed to list all datasets: %w", err)
+			return fmt.Errorf("failed to list datasets: %w", err)
 		}
 
 		// Apply client-side filtering for tenant_id and active since we don't have DB support yet
@@ -2154,7 +2213,7 @@ func (api *API) ListAllDatasets() usecase.Interactor {
 	})
 
 	u.SetTitle("List All Datasets")
-	u.SetDescription("Returns all datasets across all tenants (flat list with filtering)")
+	u.SetDescription("Returns all datasets across all tenants (filtered by user's account unless system admin)")
 	u.SetTags("datasets")
 
 	return u
@@ -2341,24 +2400,43 @@ func (api *API) ListAuditLogs() usecase.Interactor {
 			return fmt.Errorf("storage not initialized")
 		}
 
-		// TODO: Extract user role from JWT token and enforce access control
-		// - System admins: can view all logs (no account_id filter required)
-		// - Account admins: can only view logs for their account (must match JWT account_id)
-		// For now, we'll allow all requests but log a warning
+		// Get account_id from JWT claims for account-based filtering
+		accountID := middleware.GetAccountIDFromContext(ctx)
+		isSystemAdmin := middleware.IsSystemAdmin(ctx)
 
-		filter := storage.AuditLogFilter{
-			AccountID:    input.AccountID,
-			UserID:       input.UserID,
-			Action:       input.Action,
-			ResourceType: input.ResourceType,
-			ResourceID:   input.ResourceID,
-			Limit:        input.Limit,
-			Offset:       input.Offset,
-		}
+		var result *storage.ListResult[storage.AuditLog]
+		var err error
 
-		result, err := api.Services.Storage.ListAuditLogs(ctx, filter)
-		if err != nil {
-			return fmt.Errorf("failed to list audit logs: %w", err)
+		if !isSystemAdmin && accountID == "" {
+			// No JWT claims: return empty result (auth is always required)
+			log.Warnf("No account_id found in JWT claims, returning empty audit log list")
+			result = &storage.ListResult[storage.AuditLog]{Items: []storage.AuditLog{}, Total: 0}
+		} else {
+			var filterAccountID string
+			if isSystemAdmin {
+				// System admin: can view all logs (no account_id filter)
+				log.Debugf("System admin requesting audit logs (no account filter)")
+				filterAccountID = ""
+			} else {
+				// Regular user: can only view logs for their account
+				log.Debugf("User from account %s requesting audit logs (filtered by account)", accountID)
+				filterAccountID = accountID
+			}
+
+			filter := storage.AuditLogFilter{
+				AccountID:    filterAccountID,
+				UserID:       input.UserID,
+				Action:       input.Action,
+				ResourceType: input.ResourceType,
+				ResourceID:   input.ResourceID,
+				Limit:        input.Limit,
+				Offset:       input.Offset,
+			}
+
+			result, err = api.Services.Storage.ListAuditLogs(ctx, filter)
+			if err != nil {
+				return fmt.Errorf("failed to list audit logs: %w", err)
+			}
 		}
 
 		// Transform each audit log to include computed config diffs

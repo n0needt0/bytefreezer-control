@@ -20,6 +20,35 @@ const (
 	JWTClaimsContextKey = jwtContextKey("jwt_claims")
 )
 
+// GetJWTClaims extracts JWT claims from context
+// Returns nil if no claims found (e.g., auth disabled or public endpoint)
+func GetJWTClaims(ctx context.Context) *services.JWTClaims {
+	claims, ok := ctx.Value(JWTClaimsContextKey).(*services.JWTClaims)
+	if !ok {
+		return nil
+	}
+	return claims
+}
+
+// GetAccountIDFromContext extracts account_id from JWT claims in context
+// Returns empty string if no claims or user is system admin (account_id is NULL)
+func GetAccountIDFromContext(ctx context.Context) string {
+	claims := GetJWTClaims(ctx)
+	if claims == nil {
+		return ""
+	}
+	return claims.AccountID
+}
+
+// IsSystemAdmin checks if the user is a system admin based on JWT claims
+func IsSystemAdmin(ctx context.Context) bool {
+	claims := GetJWTClaims(ctx)
+	if claims == nil {
+		return false
+	}
+	return claims.Role == "system_admin"
+}
+
 // JWTAuthMiddleware provides JWT authentication middleware that stores claims in context
 func JWTAuthMiddleware(authConfig config.AuthConfig, authService *services.AuthService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -56,9 +85,13 @@ func JWTAuthMiddleware(authConfig config.AuthConfig, authService *services.AuthS
 
 			if claims, ok := token.Claims.(*services.JWTClaims); ok && token.Valid {
 				// Add JWT claims to context for audit logging
+				log.Debugf("[JWT MIDDLEWARE] Successfully parsed JWT claims for user: AccountID=%s, Role=%s, UserID=%s",
+					claims.AccountID, claims.Role, claims.UserID)
 				ctx := context.WithValue(r.Context(), JWTClaimsContextKey, claims)
+				log.Debugf("[JWT MIDDLEWARE] Added claims to context with key=%v", JWTClaimsContextKey)
 				next.ServeHTTP(w, r.WithContext(ctx))
 			} else {
+				log.Warnf("[JWT MIDDLEWARE] Invalid token claims or invalid token")
 				http.Error(w, "Invalid token claims", http.StatusUnauthorized)
 				return
 			}
@@ -72,10 +105,12 @@ func ConditionalJWTAuthMiddleware(authConfig config.AuthConfig, authService *ser
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Skip authentication for public endpoints
 			if isPublicEndpoint(r.URL.Path) {
+				log.Debugf("[JWT MIDDLEWARE] Skipping auth for public endpoint: %s", r.URL.Path)
 				next.ServeHTTP(w, r)
 				return
 			}
 
+			log.Debugf("[JWT MIDDLEWARE] Applying auth for endpoint: %s", r.URL.Path)
 			// Apply authentication for all other endpoints
 			authMiddleware := JWTAuthMiddleware(authConfig, authService)
 			authMiddleware(next).ServeHTTP(w, r)

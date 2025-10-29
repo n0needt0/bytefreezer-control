@@ -25,7 +25,7 @@ User → Create Dataset → Create Proxy Config (manual) → Proxy Polls → Pro
 - Dataset is just a data definition
 - Proxy config explicitly defines plugins
 - One tenant per proxy instance
-- Endpoint: `GET /api/v2/proxies/{instanceId}/config?tenant_id={tenantId}`
+- Endpoint: `GET /api/v1/proxies/{instanceId}/config?tenant_id={tenantId}`
 
 **Proxy Config**:
 ```yaml
@@ -45,7 +45,7 @@ User → Create Dataset with source.custom → Proxy Polls → Proxy Generates P
 - Dataset includes plugin configuration in `source.custom`
 - Zero-touch proxy configuration
 - Multiple tenants per proxy instance
-- Endpoint: `GET /api/v2/proxy/config?account_id={accountID}`
+- Endpoint: `GET /api/v1/proxy/config?account_id={accountID}`
 
 **Proxy Config**:
 ```yaml
@@ -101,7 +101,7 @@ config_polling:
 │         │                              │                          │
 │  ┌──────┴────────────┐                │                          │
 │  │ User creates      │                │                          │
-│  │ proxy config via  │                │ GET /api/v2/proxies/     │
+│  │ proxy config via  │                │ GET /api/v1/proxies/     │
 │  │ PUT endpoint      │                │    {instanceId}/config   │
 │  └───────────────────┘                │                          │
 └─────────────────────────────────────────────────────────────────┘
@@ -139,7 +139,7 @@ config_polling:
 │  │       * protocol: "sflow"    │                │               │
 │  └──────────────────────────────┘                │               │
 │         │                                         │               │
-│         │ GET /api/v2/proxy/config?              │               │
+│         │ GET /api/v1/proxy/config?              │               │
 │         │     account_id=XXX                      │               │
 │         │                                         │               │
 │         │ Returns all tenants + datasets         │               │
@@ -177,7 +177,7 @@ config_polling:
    - Dataset stored in `control_datasets` table
 
 2. **Proxy Configuration Creation** (Manual)
-   - User creates/updates proxy configuration via `/api/v2/proxies/{instanceId}/config`
+   - User creates/updates proxy configuration via `/api/v1/proxies/{instanceId}/config`
    - Proxy configuration includes plugin configs that reference datasets by `dataset_id`
    - Example plugin config:
      ```json
@@ -200,7 +200,7 @@ config_polling:
    - This ensures referential integrity
 
 4. **Configuration Polling**
-   - Proxy polls Control: `GET /api/v2/proxies/{instanceId}/config?tenant_id={tenantId}`
+   - Proxy polls Control: `GET /api/v1/proxies/{instanceId}/config?tenant_id={tenantId}`
    - Receives pre-built plugin configs with valid `dataset_id` references
    - Proxy applies configuration and starts plugins
 
@@ -238,7 +238,7 @@ config_polling:
      ```
 
 2. **Account-Based Polling**
-   - Proxy polls: `GET /api/v2/proxy/config?account_id={accountID}`
+   - Proxy polls: `GET /api/v1/proxy/config?account_id={accountID}`
    - Control returns **all tenants + datasets** for the account
    - Response includes datasets with `source.custom` plugin configurations
 
@@ -267,7 +267,7 @@ config_polling:
 
 5. **Configuration Reporting**
    - Proxy reports generated config back to Control
-   - Uses same endpoint: `PUT /api/v2/proxies/{instanceId}/config`
+   - Uses same endpoint: `PUT /api/v1/proxies/{instanceId}/config`
    - Control validates `dataset_id` references in reported config
 
 6. **Proxy Configuration**: `config.yaml`
@@ -334,7 +334,7 @@ curl -X POST http://control:8080/api/v1/tenants/ejq73vgnw26p/datasets \
 ### Creating Proxy Configuration with Dataset Reference
 
 ```bash
-curl -X PUT http://control:8080/api/v2/proxies/proxy-01/config \
+curl -X PUT http://control:8080/api/v1/proxies/proxy-01/config \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
@@ -452,7 +452,7 @@ curl -X POST http://control:8080/api/v1/tenants/tenant1/datasets \
 Proxy polls this endpoint (automatically):
 
 ```bash
-curl http://control:8080/api/v2/proxy/config?account_id=ejq73vgnw26p \
+curl http://control:8080/api/v1/proxy/config?account_id=ejq73vgnw26p \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -502,7 +502,7 @@ After receiving tenants + datasets, proxy:
 
 ```bash
 # This is done automatically by proxy, but here's what it sends:
-curl -X PUT http://control:8080/api/v2/proxies/proxy-01/config \
+curl -X PUT http://control:8080/api/v1/proxies/proxy-01/config \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
@@ -613,8 +613,8 @@ curl -X PUT http://control:8080/api/v1/tenants/tenant1/datasets/sflow-data \
 **Applies to**: Both modes (legacy and account-based)
 
 **When it Runs**:
-- **Legacy Mode**: When user creates/updates proxy config via `PUT /api/v2/proxies/{instanceId}/config`
-- **Account-Based Mode**: When proxy reports generated config via `PUT /api/v2/proxies/{instanceId}/config`
+- **Legacy Mode**: When user creates/updates proxy config via `PUT /api/v1/proxies/{instanceId}/config`
+- **Account-Based Mode**: When proxy reports generated config via `PUT /api/v1/proxies/{instanceId}/config`
 
 **Rules**:
 1. Extract all `dataset_id` fields from plugin configs
@@ -777,7 +777,7 @@ curl -X POST http://control:8080/api/v1/tenants/ejq73vgnw26p/datasets \
   -d '{"name": "metrics-data", "display_name": "Metrics", "active": true, "config": {...}}'
 
 # 2. Create proxy config
-curl -X PUT http://control:8080/api/v2/proxies/proxy-01/config \
+curl -X PUT http://control:8080/api/v1/proxies/proxy-01/config \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
@@ -812,7 +812,7 @@ curl http://control:8080/api/v1/tenants/ejq73vgnw26p/datasets/metrics-data/test 
 **Commands**:
 ```bash
 # 1. Try with invalid dataset
-curl -X PUT http://control:8080/api/v2/proxies/proxy-01/config \
+curl -X PUT http://control:8080/api/v1/proxies/proxy-01/config \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
@@ -836,7 +836,7 @@ curl -X POST http://control:8080/api/v1/tenants/ejq73vgnw26p/datasets \
   -d '{"name": "sflow-data", ...}'
 
 # 3. Retry proxy config (now succeeds)
-curl -X PUT http://control:8080/api/v2/proxies/proxy-01/config ...
+curl -X PUT http://control:8080/api/v1/proxies/proxy-01/config ...
 ```
 
 ### Scenario 3: Deleting Dataset in Use
@@ -858,7 +858,7 @@ curl -X DELETE http://control:8080/api/v1/tenants/ejq73vgnw26p/datasets/sflow-da
 # {"error": "cannot delete dataset 'sflow-data': referenced by proxy instance 'proxy-01' (remove from proxy config first)"}
 
 # 2. Update proxy config to remove the plugin
-curl -X PUT http://control:8080/api/v2/proxies/proxy-01/config \
+curl -X PUT http://control:8080/api/v1/proxies/proxy-01/config \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
@@ -891,7 +891,7 @@ curl -X DELETE http://control:8080/api/v1/tenants/ejq73vgnw26p/datasets/sflow-da
 **Cause**: Dataset is still referenced by proxy configuration
 
 **Solution**:
-1. List proxy configs: `GET /api/v2/proxies?tenant_id={tenantId}`
+1. List proxy configs: `GET /api/v1/proxies?tenant_id={tenantId}`
 2. Find the proxy instance mentioned in the error
 3. Update proxy config to remove the plugin referencing the dataset
 4. Retry dataset deletion
@@ -939,7 +939,7 @@ Maintain documentation of which datasets are used by which proxy instances and f
 ### 5. Use Configuration History
 When troubleshooting, check proxy configuration history:
 ```bash
-GET /api/v2/proxies/{instanceId}/config/history?tenant_id={tenantId}
+GET /api/v1/proxies/{instanceId}/config/history?tenant_id={tenantId}
 ```
 
 ### 6. Monitor Configuration Application
@@ -1058,7 +1058,7 @@ curl -X PUT http://control:8080/api/v1/tenants/tenant1/datasets/ebpf-data \
 
 ```bash
 # Get current proxy config
-curl http://control:8080/api/v2/proxies/proxy-01/config?tenant_id=tenant1 \
+curl http://control:8080/api/v1/proxies/proxy-01/config?tenant_id=tenant1 \
   -H "Authorization: Bearer $TOKEN"
 
 # Extract plugin type from plugin_configs[].type → becomes source.type
@@ -1141,7 +1141,7 @@ curl http://control:8080/api/v1/tenants/tenant1/datasets/sflow-data/test \
 Once verified working, you can remove the manually-created proxy config:
 
 ```bash
-curl -X DELETE http://control:8080/api/v2/proxies/proxy-01/config?tenant_id=tenant1 \
+curl -X DELETE http://control:8080/api/v1/proxies/proxy-01/config?tenant_id=tenant1 \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -1152,7 +1152,7 @@ curl -X DELETE http://control:8080/api/v2/proxies/proxy-01/config?tenant_id=tena
 This is less common, but possible:
 
 1. Note all plugin configurations from datasets' `source.custom`
-2. Create manual proxy configuration via `PUT /api/v2/proxies/{instanceId}/config`
+2. Create manual proxy configuration via `PUT /api/v1/proxies/{instanceId}/config`
 3. Update proxy `config.yaml` to use `tenant_id` instead of `account_id`
 4. Restart proxy
 5. Optionally remove `source.custom` from datasets

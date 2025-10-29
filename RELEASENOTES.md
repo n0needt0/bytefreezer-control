@@ -24,8 +24,14 @@
 
 **Migration**: `004_health_account_scoping.sql`
 - Added `account_id` column to `health_current` and `health_history` tables
-- Updated unique constraint to support multiple accounts with same hostname
+- Created unique index with COALESCE to support multiple accounts with same hostname
+  - Index: `(service_type, instance_id, COALESCE(account_id, ''))`
+  - Allows different accounts to have proxies with same hostname
+  - System services (NULL account_id) treated as empty string for uniqueness
 - Modified `upsert_health_current()` function to accept account_id parameter
+  - Uses manual UPDATE/INSERT logic instead of ON CONFLICT (PostgreSQL limitation with expression-based indexes)
+  - Tested with system services (NULL account_id) and account-scoped services
+- Updated `move_stale_health_to_history()` function to include account_id
 - NULL account_id represents system services (backward compatible)
 
 ### API Changes

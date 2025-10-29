@@ -24,6 +24,8 @@ CREATE UNIQUE INDEX health_current_unique_idx ON health_current (
 );
 
 -- Update upsert function to include account_id
+-- Note: Using manual UPDATE/INSERT instead of ON CONFLICT because PostgreSQL
+-- doesn't support ON CONFLICT with expression-based unique indexes
 CREATE OR REPLACE FUNCTION upsert_health_current(
     p_service_type VARCHAR(100),
     p_instance_id VARCHAR(255),
@@ -35,24 +37,37 @@ CREATE OR REPLACE FUNCTION upsert_health_current(
     p_response_time_ms INTEGER DEFAULT NULL
 )
 RETURNS VOID AS $$
+DECLARE
+    v_count INTEGER;
 BEGIN
-    INSERT INTO health_current (
-        service_type, instance_id, instance_api, status, account_id,
-        configuration, metrics, response_time_ms, last_seen, updated_at
-    )
-    VALUES (
-        p_service_type, p_instance_id, p_instance_api, p_status, p_account_id,
-        p_configuration, p_metrics, p_response_time_ms, NOW(), NOW()
-    )
-    ON CONFLICT ON CONSTRAINT health_current_unique_idx
-    DO UPDATE SET
-        instance_api = EXCLUDED.instance_api,
-        status = EXCLUDED.status,
-        configuration = COALESCE(EXCLUDED.configuration, health_current.configuration),
-        metrics = COALESCE(EXCLUDED.metrics, health_current.metrics),
-        response_time_ms = COALESCE(EXCLUDED.response_time_ms, health_current.response_time_ms),
+    -- Try to update first
+    UPDATE health_current
+    SET
+        instance_api = p_instance_api,
+        status = p_status,
+        configuration = COALESCE(p_configuration, configuration),
+        metrics = COALESCE(p_metrics, metrics),
+        response_time_ms = COALESCE(p_response_time_ms, response_time_ms),
         last_seen = NOW(),
-        updated_at = NOW();
+        updated_at = NOW()
+    WHERE
+        service_type = p_service_type
+        AND instance_id = p_instance_id
+        AND COALESCE(account_id, '') = COALESCE(p_account_id, '');
+
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+
+    -- If no row was updated, insert
+    IF v_count = 0 THEN
+        INSERT INTO health_current (
+            service_type, instance_id, instance_api, status, account_id,
+            configuration, metrics, response_time_ms, last_seen, updated_at
+        )
+        VALUES (
+            p_service_type, p_instance_id, p_instance_api, p_status, p_account_id,
+            p_configuration, p_metrics, p_response_time_ms, NOW(), NOW()
+        );
+    END IF;
 END;
 $$ LANGUAGE plpgsql;
 

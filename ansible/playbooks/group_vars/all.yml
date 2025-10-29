@@ -87,6 +87,7 @@ config:
   auth:
     jwt_secret: "bytefreezer-control-jwt-secret-966c5b3e-597c-4b2c-96fb-86d2ffc312fe"  # Strong secret for signing JWTs
     token_expiry_hours: 24
+    service_api_key: "bytefreezer-service-api-key-8f4a2d1b-3c5e-4f6a-9b8c-7d2e1f3a4b5c"  # System-wide API key for piper/packer/receiver
 
   # Rate limiting
   rate_limit:
@@ -101,11 +102,6 @@ config:
     report_interval: 30  # How often to register itself (seconds)
     timeout_seconds: 10  # HTTP timeout for health operations
     register_on_startup: true  # Register service instance on startup
-
-  # Error tracking configuration for centralized error monitoring
-  # Note: Control service hosts the error tracking API, so this enables self-tracking
-  error_tracking:
-    enabled: true  # Enable by default to collect errors from control service itself
 
   # Development mode
   dev: true  # Enable dev mode for browser testing

@@ -99,7 +99,11 @@ func JWTAuthMiddleware(authConfig config.AuthConfig, authService *services.AuthS
 	}
 }
 
-// ConditionalJWTAuthMiddleware provides JWT authentication middleware that skips public endpoints
+// ConditionalJWTAuthMiddleware provides authentication middleware that:
+// 1. Skips public endpoints
+// 2. Validates system-wide API token (for piper/packer/receiver)
+// 3. Validates account-specific API keys (for proxy)
+// 4. Validates JWT tokens (for users)
 func ConditionalJWTAuthMiddleware(authConfig config.AuthConfig, authService *services.AuthService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -110,8 +114,54 @@ func ConditionalJWTAuthMiddleware(authConfig config.AuthConfig, authService *ser
 				return
 			}
 
-			log.Debugf("[JWT MIDDLEWARE] Applying auth for endpoint: %s", r.URL.Path)
-			// Apply authentication for all other endpoints
+			// Extract Authorization header
+			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" {
+				http.Error(w, "Authorization header required", http.StatusUnauthorized)
+				return
+			}
+
+			// Check Bearer token format
+			bearerToken := strings.Split(authHeader, " ")
+			if len(bearerToken) != 2 || bearerToken[0] != "Bearer" {
+				http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
+				return
+			}
+
+			tokenString := bearerToken[1]
+
+			// Try system-wide API token first (for internal services: piper/packer/receiver)
+			if authConfig.ServiceAPIKey != "" && tokenString == authConfig.ServiceAPIKey {
+				log.Debugf("[JWT MIDDLEWARE] Valid system API token for endpoint: %s", r.URL.Path)
+				claims := &services.JWTClaims{
+					UserID:    "system",
+					AccountID: "", // System account sees all data
+					Email:     "system@bytefreezer.internal",
+					Role:      "system_admin",
+				}
+				ctx := context.WithValue(r.Context(), JWTClaimsContextKey, claims)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+
+			// Try account-specific API key (for proxy)
+			accountID, err := authService.ValidateAPIKey(r.Context(), tokenString)
+			if err == nil {
+				log.Debugf("[JWT MIDDLEWARE] Valid account API key for account %s, endpoint: %s", accountID, r.URL.Path)
+				// Create claims with account context (filtered by account_id)
+				claims := &services.JWTClaims{
+					UserID:    "api-key",
+					AccountID: accountID,
+					Email:     fmt.Sprintf("api-key@%s.bytefreezer.internal", accountID),
+					Role:      "account_admin", // API keys have account_admin privileges
+				}
+				ctx := context.WithValue(r.Context(), JWTClaimsContextKey, claims)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+
+			log.Debugf("[JWT MIDDLEWARE] Applying JWT auth for endpoint: %s", r.URL.Path)
+			// Otherwise, apply JWT authentication
 			authMiddleware := JWTAuthMiddleware(authConfig, authService)
 			authMiddleware(next).ServeHTTP(w, r)
 		})

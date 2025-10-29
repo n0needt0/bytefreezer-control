@@ -15,13 +15,9 @@ Avoid flattery, compliments, or positive language. Be clear and concise. Do not 
 
 requirements:
 
-
-
-
-i deployed latest control , i still see all errors on system erros page. thye are not filtered at all.
-only system administrators should see all errors, but all the other accoutns should only see their account errors
-
-- on Dataset Statistics page add account/dataset filter as well to count "Total errors". then link counter to system errors page with preconstructed filter.
-
-- please provide test api calls to control for me to test.
-- atm i see this url pulls system errors data, as you can see there no filtering at all
+- there no public api-end points on control (if you find any please list them for my review)
+- all components proxy, receiver, piper and packer use system wide api-token to access control 
+- user authenticates and uses jwt token to access system
+- all data pulled from control is filtered by account_id
+- system administrator can log into other users accounts
+- system administrator sees entire data that is not filtered by account id

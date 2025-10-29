@@ -81,7 +81,10 @@ func AuthMiddleware(authConfig config.AuthConfig) func(http.Handler) http.Handle
 }
 
 
-// ConditionalAuthMiddleware provides JWT authentication middleware that skips public endpoints
+// ConditionalAuthMiddleware provides authentication middleware that:
+// 1. Skips public endpoints
+// 2. Accepts API tokens for service-to-service communication
+// 3. Accepts JWT tokens for user requests
 func ConditionalAuthMiddleware(authConfig config.AuthConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -91,9 +94,64 @@ func ConditionalAuthMiddleware(authConfig config.AuthConfig) func(http.Handler) 
 				return
 			}
 
-			// Apply authentication for all other endpoints
-			authMiddleware := AuthMiddleware(authConfig)
-			authMiddleware(next).ServeHTTP(w, r)
+			// Extract Authorization header
+			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" {
+				http.Error(w, "Authorization header required", http.StatusUnauthorized)
+				return
+			}
+
+			// Check Bearer token format
+			bearerToken := strings.Split(authHeader, " ")
+			if len(bearerToken) != 2 || bearerToken[0] != "Bearer" {
+				http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
+				return
+			}
+
+			tokenString := bearerToken[1]
+
+			// Try API token first (for service-to-service communication)
+			if authConfig.ServiceAPIKey != "" && tokenString == authConfig.ServiceAPIKey {
+				// Valid service API token - create system admin context
+				claims := &UserClaims{
+					UserID:    "system",
+					AccountID: "", // System account sees all data
+					Email:     "system@bytefreezer.internal",
+					Role:      "system_admin",
+				}
+				ctx := context.WithValue(r.Context(), UserContextKey, claims)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+
+			// Otherwise, try JWT token (for user requests)
+			token, err := jwt.ParseWithClaims(tokenString, &UserClaims{}, func(token *jwt.Token) (interface{}, error) {
+				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+					return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+				}
+				return []byte(authConfig.JWTSecret), nil
+			})
+
+			if err != nil {
+				log.Warnf("Invalid token: %v", err)
+				http.Error(w, "Invalid token", http.StatusUnauthorized)
+				return
+			}
+
+			if claims, ok := token.Claims.(*UserClaims); ok && token.Valid {
+				// Check if user is admin for admin-only endpoints
+				if isAdminEndpoint(r.URL.Path) && !claims.IsSystemAdmin() {
+					http.Error(w, "Admin access required", http.StatusForbidden)
+					return
+				}
+
+				// Add user to context
+				ctx := context.WithValue(r.Context(), UserContextKey, claims)
+				next.ServeHTTP(w, r.WithContext(ctx))
+			} else {
+				http.Error(w, "Invalid token claims", http.StatusUnauthorized)
+				return
+			}
 		})
 	}
 }
@@ -104,10 +162,6 @@ func isPublicEndpoint(path string) bool {
 		"/api/v1/health",
 		"/api/v1/login",
 		"/api/v1/password-reset",
-		"/api/v1/services/report",     // Allow services to report health without auth (legacy)
-		"/api/v1/health/register",     // Allow services to register for health monitoring
-		"/api/v1/health/status",       // Allow health status checks
-		"/api/v1/health/summary",      // Allow health summary for dashboard
 	}
 
 	// Check exact matches
@@ -115,11 +169,6 @@ func isPublicEndpoint(path string) bool {
 		if path == endpoint {
 			return true
 		}
-	}
-
-	// Allow service-specific health endpoints: /api/v1/health/services/{serviceType}
-	if strings.HasPrefix(path, "/api/v1/health/services/") {
-		return true
 	}
 
 	return false

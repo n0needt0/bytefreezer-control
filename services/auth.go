@@ -609,3 +609,88 @@ func (a *AuthService) ChangePassword(ctx context.Context, userID, newPassword st
 func (a *AuthService) GetJWTSecret() []byte {
 	return a.jwtSecret
 }
+
+// ValidateAPIKey validates an account-specific API key and returns the account ID
+func (a *AuthService) ValidateAPIKey(ctx context.Context, apiKey string) (string, error) {
+	// Query all active API keys
+	query := `
+		SELECT id, account_id, key_hash, active
+		FROM control_api_keys
+		WHERE active = true
+	`
+
+	rows, err := a.db.QueryContext(ctx, query)
+	if err != nil {
+		return "", fmt.Errorf("failed to query API keys: %w", err)
+	}
+	defer rows.Close()
+
+	// Check each key hash against the provided API key
+	for rows.Next() {
+		var id, accountID, keyHash string
+		var active bool
+
+		if err := rows.Scan(&id, &accountID, &keyHash, &active); err != nil {
+			continue
+		}
+
+		// Decode the stored hash
+		hashBytes, err := base64.StdEncoding.DecodeString(keyHash)
+		if err != nil {
+			log.Warnf("Failed to decode key hash for API key %s: %v", id, err)
+			continue
+		}
+
+		// Compare the provided API key with the stored hash
+		if err := bcrypt.CompareHashAndPassword(hashBytes, []byte(apiKey)); err == nil {
+			// Valid API key found - update last_used_at
+			_, updateErr := a.db.ExecContext(ctx,
+				"UPDATE control_api_keys SET last_used_at = NOW() WHERE id = $1",
+				id)
+			if updateErr != nil {
+				log.Warnf("Failed to update last_used_at for API key %s: %v", id, updateErr)
+			}
+
+			return accountID, nil
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return "", fmt.Errorf("error iterating API keys: %w", err)
+	}
+
+	return "", fmt.Errorf("invalid API key")
+}
+
+// GenerateAPIKey generates a new API key for an account
+func (a *AuthService) GenerateAPIKey(ctx context.Context, accountID, name, instanceID string) (string, string, error) {
+	// Generate a random API key (36 chars)
+	apiKey, err := GenerateRandomToken(27) // Results in ~36 chars after base64 encoding
+	if err != nil {
+		return "", "", fmt.Errorf("failed to generate API key: %w", err)
+	}
+
+	// Hash the API key before storing
+	keyHash, err := hashToken(apiKey)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to hash API key: %w", err)
+	}
+
+	// Generate a unique key ID
+	keyID := fmt.Sprintf("key_%d", time.Now().UnixNano())
+
+	// Store in database
+	query := `
+		INSERT INTO control_api_keys (id, account_id, name, key_hash, instance_id, active)
+		VALUES ($1, $2, $3, $4, $5, true)
+		RETURNING id
+	`
+
+	err = a.db.QueryRowContext(ctx, query, keyID, accountID, name, keyHash, instanceID).Scan(&keyID)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to store API key: %w", err)
+	}
+
+	log.Infof("Generated new API key %s for account %s", keyID, accountID)
+	return keyID, apiKey, nil
+}

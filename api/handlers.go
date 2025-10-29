@@ -466,7 +466,12 @@ func (api *API) CreateAccount() usecase.Interactor {
 		Email string `json:"email" required:"true"`
 	}
 
-	u := usecase.NewInteractor(func(ctx context.Context, input createAccountInput, output *storage.Account) error {
+	type createAccountOutput struct {
+		Account *storage.Account `json:"account"`
+		APIKey  string           `json:"api_key"` // Only returned once on creation
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input createAccountInput, output *createAccountOutput) error {
 		api.Services.IncrementAPIRequests()
 		api.Services.IncrementDatabaseQueries()
 
@@ -484,18 +489,28 @@ func (api *API) CreateAccount() usecase.Interactor {
 			return fmt.Errorf("failed to create account: %w", err)
 		}
 
+		// Generate API key for this account (for proxy)
+		_, apiKey, err := api.Services.Auth.GenerateAPIKey(ctx, account.ID, "Default Proxy API Key", "")
+		if err != nil {
+			log.Warnf("Failed to generate API key for account %s: %v", account.ID, err)
+			// Don't fail account creation if API key generation fails
+			apiKey = ""
+		}
+
 		// Log audit event
 		api.logAuditEvent(ctx, account.ID, "account_created", "account", account.ID, map[string]interface{}{
 			"account_name": account.Name,
 			"email":        account.Email,
+			"api_key_generated": apiKey != "",
 		})
 
-		*output = *account
+		output.Account = account
+		output.APIKey = apiKey // Return the API key - only time it's visible
 		return nil
 	})
 
 	u.SetTitle("Create Account")
-	u.SetDescription("Creates a new ByteFreezer account")
+	u.SetDescription("Creates a new ByteFreezer account and generates an API key")
 	u.SetTags("accounts")
 	u.SetExpectedErrors(usecaseStatus.InvalidArgument)
 

@@ -79,6 +79,7 @@ type HousekeepingConfig struct {
 type AuthConfig struct {
 	JWTSecret        string `yaml:"jwt_secret"`
 	TokenExpiryHours int    `yaml:"token_expiry_hours"`
+	ServiceAPIKey    string `yaml:"service_api_key"` // API key for service-to-service auth (piper, packer)
 }
 
 type RateLimitConfig struct {

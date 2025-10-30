@@ -30,6 +30,7 @@ type SystemError struct {
 	ErrorHash        string                 `json:"error_hash"`
 	ErrorType        string                 `json:"error_type"`
 	Component        string                 `json:"component"`
+	AccountID        string                 `json:"account_id,omitempty"`
 	TenantID         string                 `json:"tenant_id,omitempty"`
 	DatasetID        string                 `json:"dataset_id,omitempty"`
 	ErrorMessage     string                 `json:"error_message"`
@@ -161,23 +162,18 @@ func (s *ErrorReportingService) ReportError(ctx context.Context, report ErrorRep
 
 // ListErrors retrieves errors based on filter criteria
 func (s *ErrorReportingService) ListErrors(ctx context.Context, filter ErrorListFilter) ([]SystemError, int, error) {
-	// Build query with filters
+	// Build query with filters - always join with tenants to get account_id
 	query := `
 		SELECT e.id, e.error_hash, e.error_type, e.component,
+		       COALESCE(t.account_id, '') as account_id,
 		       COALESCE(e.tenant_id, '') as tenant_id,
 		       COALESCE(e.dataset_id, '') as dataset_id,
 		       e.error_message, e.error_sample, e.severity, e.status,
 		       e.occurrence_count, e.first_seen, e.last_seen, e.sample_rate,
 		       e.samples_collected, e.samples_dropped, e.metadata,
 		       e.created_at, e.updated_at, e.resolved_at
-		FROM system_errors e`
-
-	// Add joins if filtering by account_id
-	if filter.AccountID != "" {
-		query += `
-		LEFT JOIN control_tenants t ON e.tenant_id = t.id
-		`
-	}
+		FROM system_errors e
+		LEFT JOIN control_tenants t ON e.tenant_id = t.id`
 
 	query += ` WHERE 1=1`
 
@@ -222,8 +218,10 @@ func (s *ErrorReportingService) ListErrors(ctx context.Context, filter ErrorList
 	}
 
 	// Account-based filtering
+	// Non-admin users should only see errors for their account's tenants
+	// System-level errors (tenant_id IS NULL) are only shown to system admins via the non-filtered endpoint
 	if filter.AccountID != "" {
-		query += fmt.Sprintf(" AND (t.account_id = $%d OR e.tenant_id IS NULL)", argIndex)
+		query += fmt.Sprintf(" AND t.account_id = $%d", argIndex)
 		args = append(args, filter.AccountID)
 		argIndex++
 	}
@@ -255,7 +253,7 @@ func (s *ErrorReportingService) ListErrors(ctx context.Context, filter ErrorList
 
 		err := rows.Scan(
 			&e.ID, &e.ErrorHash, &e.ErrorType, &e.Component,
-			&e.TenantID, &e.DatasetID, &e.ErrorMessage,
+			&e.AccountID, &e.TenantID, &e.DatasetID, &e.ErrorMessage,
 			&errorSampleJSON, &e.Severity, &e.Status,
 			&e.OccurrenceCount, &e.FirstSeen, &e.LastSeen, &e.SampleRate,
 			&e.SamplesCollected, &e.SamplesDropped, &metadataJSON,
@@ -326,7 +324,7 @@ func (s *ErrorReportingService) ListErrors(ctx context.Context, filter ErrorList
 		countArgIndex++
 	}
 	if filter.AccountID != "" {
-		countQuery += fmt.Sprintf(" AND (t.account_id = $%d OR e.tenant_id IS NULL)", countArgIndex)
+		countQuery += fmt.Sprintf(" AND t.account_id = $%d", countArgIndex)
 		countArgs = append(countArgs, filter.AccountID)
 		countArgIndex++
 	}
@@ -358,7 +356,7 @@ func (s *ErrorReportingService) GetErrorStats(ctx context.Context, accountID str
 	if accountID != "" {
 		query += `
 		LEFT JOIN control_tenants t ON e.tenant_id = t.id
-		WHERE (t.account_id = $1 OR e.tenant_id IS NULL)`
+		WHERE t.account_id = $1`
 		args = append(args, accountID)
 	}
 

@@ -6,6 +6,7 @@
 - Control service deployed and tested
 - Error reporting API endpoints verified
 - Test suite passed (deduplication working, stats API working)
+- **Updated**: Fixed account filtering, UI improvements, self-healing error reporter (2025-10-30)
 
 ### New Feature: Error Reporting & Tracking
 
@@ -85,6 +86,30 @@ Uses existing `control_service.base_url` and `control_service.api_key` configura
 **Test Scripts**:
 - `scripts/test-error-reporting.sh` - Bash test script for error reporting
 - `scripts/test-error-reporting.py` - Python test script with advanced testing features
+
+### Fixes & Improvements (2025-10-30)
+
+**Account Filtering Fix**:
+- Fixed issue where non-admin users were seeing system-level errors (tenant_id IS NULL)
+- Updated filtering logic in `services/error_reporting.go`: account users now only see errors for their account's tenants
+- System admins continue to see all errors via system-wide endpoint (`/api/v1/errors`)
+
+**UI Improvements** (`bytefreezer-ui/src/app/dashboard/errors/page.tsx`):
+- Added account_id, tenant_id, dataset_id as colored badges on error rows
+- Removed stats cards (Total Errors, Total Occurrences, Critical, Active)
+- Removed status badges (active/resolved/ignored) from error display
+- Cleaner, more focused error display with essential information only
+
+**Self-Healing Error Reporter** (All Services):
+- Added retry logic with local queue (max 1000 errors per service)
+- Services no longer FATAL when control service is unavailable
+- Errors queued locally and retried every 30 seconds until control is available
+- Background worker automatically retries queued errors
+- Updated files:
+  - `bytefreezer-packer/errors/error_reporter.go`
+  - `bytefreezer-receiver/errors/error_reporter.go`
+  - `bytefreezer-piper/errors/error_reporter.go`
+  - `bytefreezer-proxy/errors/error_reporter.go` (account-scoped endpoint)
 
 ## v2.6.0: Account-Scoped Health Monitoring (2025-10-29)
 

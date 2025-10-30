@@ -15,11 +15,7 @@ Avoid flattery, compliments, or positive language. Be clear and concise. Do not 
 
 
 requirements:
-now we have clean and working project.
+- i see on display only records where tenant is and dataset id is NULL. this is worng as i can only see my account/tenant errors . unless i logged in a system administrator
 
-- build error reporting from all services to control via authenticated path (same as you submit health)
-- display errors on ui: System Erros page. this should be filtered by currently logged account_id
-- errors stored in system_errors table
-- repeating errors should be prevented to populate table unlimited and prevent DDOS the system
-- the system errors should also be linked from statistics page from Total Errors and filtered by account_id and dataset selector on Data Set statistics
-- on dataset statistics page , add "All Datasets" on dataset selector, this way we can get total stats for account
+- on system error page, please display on each error account_id, tenant_id and dataset_id. please remove top row where total errors.. to active. leave filters and error data rows. from rows remove active/critical labels as we have no idea if it active.
+- we need to create self healing system, at them monet if control is not avaialble services can not connect and fail to start, therefore requiring restart. please fix it so it does not FATAL but rather waiting for control to become avaialble. perhaps logging errors locally and submitting them when control is ready.

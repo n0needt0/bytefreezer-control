@@ -165,6 +165,9 @@ func (api *API) NewRouter() *web.Service {
 	// Account proxy health endpoints
 	service.Get("/api/v1/accounts/{account_id}/proxies", api.GetAccountProxies())
 
+	// Proxy health endpoints (for system admins - returns health data)
+	service.Get("/api/v1/proxies/health", api.ListAllProxies())
+
 	// Proxy configuration management endpoints
 	service.Get("/api/v1/proxies", api.ListProxyInstances())
 	service.Get("/api/v1/proxies/{instanceId}/config", api.GetProxyConfig())

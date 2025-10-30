@@ -377,6 +377,71 @@ func (h *HealthService) GetProxiesByAccount(accountID string) ([]HealthRecord, e
 	return records, nil
 }
 
+// GetAllProxies returns health records for all bytefreezer-proxy instances across all accounts
+func (h *HealthService) GetAllProxies() ([]HealthRecord, error) {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	rows, err := h.db.Query(`
+		SELECT id, service_type, instance_id, instance_api, account_id, status,
+		       configuration, metrics, response_time_ms, last_seen, created_at, updated_at
+		FROM health_current
+		WHERE service_type = 'bytefreezer-proxy'
+		ORDER BY account_id, instance_id`)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query all proxy health records: %w", err)
+	}
+	defer rows.Close()
+
+	var records []HealthRecord
+	for rows.Next() {
+		var record HealthRecord
+		var configJson, metricsJson sql.NullString
+
+		var accountID sql.NullString
+		err := rows.Scan(
+			&record.ID,
+			&record.ServiceType,
+			&record.InstanceID,
+			&record.InstanceAPI,
+			&accountID,
+			&record.Status,
+			&configJson,
+			&metricsJson,
+			&record.ResponseTimeMs,
+			&record.LastSeen,
+			&record.CreatedAt,
+			&record.UpdatedAt,
+		)
+		if accountID.Valid {
+			record.AccountID = accountID.String
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan proxy health record: %w", err)
+		}
+
+		// Parse JSON fields
+		if configJson.Valid {
+			if err := json.Unmarshal([]byte(configJson.String), &record.Configuration); err != nil {
+				log.Warnf("Failed to unmarshal configuration for %s:%s: %v",
+					record.ServiceType, record.InstanceID, err)
+			}
+		}
+
+		if metricsJson.Valid {
+			if err := json.Unmarshal([]byte(metricsJson.String), &record.Metrics); err != nil {
+				log.Warnf("Failed to unmarshal metrics for %s:%s: %v",
+					record.ServiceType, record.InstanceID, err)
+			}
+		}
+
+		records = append(records, record)
+	}
+
+	return records, nil
+}
+
 // PollServicesHealth polls all registered services for their health status
 func (h *HealthService) PollServicesHealth() error {
 	records, err := h.GetAllHealthRecords()

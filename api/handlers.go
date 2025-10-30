@@ -2397,6 +2397,97 @@ func (api *API) GetAccountProxies() usecase.Interactor {
 	return u
 }
 
+// ListAllProxies returns all proxy instances across all accounts (system admin only)
+func (api *API) ListAllProxies() usecase.Interactor {
+	u := usecase.NewInteractor(func(ctx context.Context, input struct{}, output *ProxiesListResponse) error {
+		api.Services.IncrementAPIRequests()
+
+		// Check if user is system admin
+		isSystemAdmin := middleware.IsSystemAdmin(ctx)
+		if !isSystemAdmin {
+			return usecaseStatus.Wrap(fmt.Errorf("unauthorized: system admin access required"), usecaseStatus.PermissionDenied)
+		}
+
+		if api.Services.HealthService == nil {
+			return fmt.Errorf("health service not available")
+		}
+
+		// Get all proxies across all accounts
+		records, err := api.Services.HealthService.GetAllProxies()
+		if err != nil {
+			return fmt.Errorf("failed to get proxy health records: %w", err)
+		}
+
+		// Convert health records to proxy responses
+		proxies := make([]ProxyResponse, len(records))
+		for i, record := range records {
+			responseTimeMs := 0
+			if record.ResponseTimeMs != nil {
+				responseTimeMs = *record.ResponseTimeMs
+			}
+
+			// Enrich configuration with plugin data from proxy_instances table
+			configuration := record.Configuration
+			if configuration == nil {
+				configuration = make(map[string]interface{})
+			}
+
+			// Get all tenants for this account
+			if record.AccountID != "" {
+				tenantsResult, err := api.Services.Storage.ListTenants(ctx, record.AccountID, storage.ListOptions{})
+				if err == nil && tenantsResult != nil {
+					// Collect all plugin configs across all tenants for this proxy
+					allPluginConfigs := []map[string]interface{}{}
+
+					for _, tenant := range tenantsResult.Items {
+						proxyConfigs, err := api.Services.Storage.ListProxyConfigs(ctx, tenant.ID)
+						if err == nil {
+							for _, pc := range proxyConfigs {
+								if pc.InstanceID == record.InstanceID {
+									// Add this proxy's plugin configs
+									allPluginConfigs = append(allPluginConfigs, pc.PluginConfigs...)
+								}
+							}
+						}
+					}
+
+					// Add plugins to configuration
+					if len(allPluginConfigs) > 0 {
+						configuration["plugins"] = map[string]interface{}{
+							"total_plugins":  len(allPluginConfigs),
+							"plugin_details": allPluginConfigs,
+						}
+					}
+				}
+			}
+
+			proxies[i] = ProxyResponse{
+				InstanceID:     record.InstanceID,
+				InstanceAPI:    record.InstanceAPI,
+				AccountID:      record.AccountID,
+				Status:         record.Status,
+				LastSeen:       record.LastSeen.Format("2006-01-02T15:04:05Z07:00"),
+				Configuration:  configuration,
+				Metrics:        record.Metrics,
+				ResponseTimeMs: responseTimeMs,
+			}
+		}
+
+		output.Proxies = proxies
+		output.Count = len(proxies)
+
+		log.Infof("Retrieved %d proxy instances across all accounts (system admin)", len(proxies))
+
+		return nil
+	})
+
+	u.SetTitle("List All Proxies")
+	u.SetDescription("Returns all proxy instances across all accounts (system admin only)")
+	u.SetTags("proxies", "health", "admin")
+
+	return u
+}
+
 // Audit Log API handlers
 
 // AuditLogWithDiff extends AuditLog with computed diffs for config changes

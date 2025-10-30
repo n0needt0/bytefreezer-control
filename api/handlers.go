@@ -1622,13 +1622,18 @@ func (api *API) TestDataset() usecase.Interactor {
 			inputMessage = "Unable to check proxy configuration"
 		} else {
 			// Get all running proxies from health service
+			// Map both instance_id (hostname) and instance_api (hostname:port) for matching
 			runningProxies := make(map[string]bool)
 			if api.Services.HealthService != nil {
 				healthRecords, err := api.Services.HealthService.GetHealthRecordsByService("bytefreezer-proxy")
 				if err == nil {
 					for _, record := range healthRecords {
 						if record.Status == "Healthy" || record.Status == "Active" {
+							// Index by both instance_id and instance_api for flexible matching
 							runningProxies[record.InstanceID] = true
+							if record.InstanceAPI != "" && record.InstanceAPI != record.InstanceID {
+								runningProxies[record.InstanceAPI] = true
+							}
 						}
 					}
 				}
@@ -1788,11 +1793,13 @@ func (api *API) ListUsers() usecase.Interactor {
 		accountID := middleware.GetAccountIDFromContext(ctx)
 		isSystemAdmin := middleware.IsSystemAdmin(ctx)
 
+		log.Infof("ListUsers: accountID=%s, isSystemAdmin=%v", accountID, isSystemAdmin)
+
 		var users []services.User
 
 		if isSystemAdmin {
 			// System admin: pass empty string to see all users
-			log.Debugf("System admin requesting all users")
+			log.Infof("System admin requesting all users")
 			var err error
 			users, err = api.Services.Auth.ListUsers(ctx, "")
 			if err != nil {
@@ -1800,7 +1807,7 @@ func (api *API) ListUsers() usecase.Interactor {
 			}
 		} else if accountID != "" {
 			// Regular user: filter by their account_id
-			log.Debugf("User from account %s requesting users (filtered by account)", accountID)
+			log.Infof("User from account %s requesting users (filtered by account)", accountID)
 			var err error
 			users, err = api.Services.Auth.ListUsers(ctx, accountID)
 			if err != nil {
@@ -1811,6 +1818,8 @@ func (api *API) ListUsers() usecase.Interactor {
 			log.Warnf("No account_id found in JWT claims, returning empty user list")
 			users = []services.User{}
 		}
+
+		log.Infof("ListUsers: Returning %d users", len(users))
 
 		output.Items = users
 		output.Total = len(users)

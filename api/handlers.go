@@ -1918,11 +1918,14 @@ func (api *API) CreateUser() usecase.Interactor {
 // UpdateUser updates an existing user
 func (api *API) UpdateUser() usecase.Interactor {
 	type updateUserInput struct {
-		UserID    string `path:"userId" required:"true"`
-		FirstName string `json:"first_name"`
-		LastName  string `json:"last_name"`
-		Role      string `json:"role"`
-		Active    *bool  `json:"active"`
+		UserID                  string `path:"userId" required:"true"`
+		FirstName               string `json:"first_name"`
+		LastName                string `json:"last_name"`
+		Role                    string `json:"role"`
+		Active                  *bool  `json:"active"`
+		RateLimitEnabled        *bool  `json:"rate_limit_enabled"`
+		RateLimitRequestsPerMin *int   `json:"rate_limit_requests_per_minute"`
+		RateLimitBurstSize      *int   `json:"rate_limit_burst_size"`
 	}
 
 	u := usecase.NewInteractor(func(ctx context.Context, input updateUserInput, output *services.User) error {
@@ -1958,6 +1961,9 @@ func (api *API) UpdateUser() usecase.Interactor {
 			input.LastName,
 			input.Role,
 			input.Active,
+			input.RateLimitEnabled,
+			input.RateLimitRequestsPerMin,
+			input.RateLimitBurstSize,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to update user: %w", err)
@@ -1982,6 +1988,18 @@ func (api *API) UpdateUser() usecase.Interactor {
 		if input.Active != nil && *input.Active != oldUser.Active {
 			oldValues["active"] = oldUser.Active
 			changes["active"] = *input.Active
+		}
+		if input.RateLimitEnabled != nil && *input.RateLimitEnabled != oldUser.RateLimitEnabled {
+			oldValues["rate_limit_enabled"] = oldUser.RateLimitEnabled
+			changes["rate_limit_enabled"] = *input.RateLimitEnabled
+		}
+		if input.RateLimitRequestsPerMin != nil && *input.RateLimitRequestsPerMin != oldUser.RateLimitRequestsPerMin {
+			oldValues["rate_limit_requests_per_minute"] = oldUser.RateLimitRequestsPerMin
+			changes["rate_limit_requests_per_minute"] = *input.RateLimitRequestsPerMin
+		}
+		if input.RateLimitBurstSize != nil && *input.RateLimitBurstSize != oldUser.RateLimitBurstSize {
+			oldValues["rate_limit_burst_size"] = oldUser.RateLimitBurstSize
+			changes["rate_limit_burst_size"] = *input.RateLimitBurstSize
 		}
 
 		// Log audit event with changes

@@ -21,19 +21,22 @@ type AuthService struct {
 }
 
 type User struct {
-	ID             string                 `json:"id"`
-	AccountID      string                 `json:"account_id"`
-	Email          string                 `json:"email"`
-	Role           string                 `json:"role"` // system_admin, account_admin, account_readonly
-	FirstName      string                 `json:"first_name"`
-	LastName       string                 `json:"last_name"`
-	Active         bool                   `json:"active"`
-	EmailVerified  bool                   `json:"email_verified"`
-	OAuthProvider  *string                `json:"oauth_provider,omitempty"`
-	LastLoginAt    *time.Time             `json:"last_login_at,omitempty"`
-	CreatedAt      time.Time              `json:"created_at"`
-	UpdatedAt      time.Time              `json:"updated_at"`
-	Metadata       map[string]interface{} `json:"metadata,omitempty"`
+	ID                        string                 `json:"id"`
+	AccountID                 string                 `json:"account_id"`
+	Email                     string                 `json:"email"`
+	Role                      string                 `json:"role"` // system_admin, account_admin, account_readonly
+	FirstName                 string                 `json:"first_name"`
+	LastName                  string                 `json:"last_name"`
+	Active                    bool                   `json:"active"`
+	EmailVerified             bool                   `json:"email_verified"`
+	OAuthProvider             *string                `json:"oauth_provider,omitempty"`
+	LastLoginAt               *time.Time             `json:"last_login_at,omitempty"`
+	RateLimitEnabled          bool                   `json:"rate_limit_enabled"`
+	RateLimitRequestsPerMin   int                    `json:"rate_limit_requests_per_minute"`
+	RateLimitBurstSize        int                    `json:"rate_limit_burst_size"`
+	CreatedAt                 time.Time              `json:"created_at"`
+	UpdatedAt                 time.Time              `json:"updated_at"`
+	Metadata                  map[string]interface{} `json:"metadata,omitempty"`
 }
 
 type Session struct {
@@ -91,7 +94,9 @@ func (a *AuthService) AuthenticateUser(ctx context.Context, email, password stri
 
 	query := `
 		SELECT id, account_id, email, password_hash, role, first_name, last_name,
-		       active, email_verified, oauth_provider, last_login_at, created_at, updated_at
+		       active, email_verified, oauth_provider, last_login_at,
+		       rate_limit_enabled, rate_limit_requests_per_minute, rate_limit_burst_size,
+		       created_at, updated_at
 		FROM control_users
 		WHERE email = $1 AND active = true
 	`
@@ -99,7 +104,9 @@ func (a *AuthService) AuthenticateUser(ctx context.Context, email, password stri
 	err := a.db.QueryRowContext(ctx, query, email).Scan(
 		&user.ID, &user.AccountID, &user.Email, &passwordHash, &user.Role,
 		&firstName, &lastName, &user.Active, &user.EmailVerified,
-		&oauthProvider, &lastLoginAt, &user.CreatedAt, &user.UpdatedAt,
+		&oauthProvider, &lastLoginAt,
+		&user.RateLimitEnabled, &user.RateLimitRequestsPerMin, &user.RateLimitBurstSize,
+		&user.CreatedAt, &user.UpdatedAt,
 	)
 
 	if err == sql.ErrNoRows {
@@ -245,7 +252,9 @@ func (a *AuthService) GetUserByID(ctx context.Context, userID string) (*User, er
 
 	query := `
 		SELECT id, account_id, email, role, first_name, last_name,
-		       active, email_verified, oauth_provider, last_login_at, created_at, updated_at
+		       active, email_verified, oauth_provider, last_login_at,
+		       rate_limit_enabled, rate_limit_requests_per_minute, rate_limit_burst_size,
+		       created_at, updated_at
 		FROM control_users
 		WHERE id = $1
 	`
@@ -253,7 +262,9 @@ func (a *AuthService) GetUserByID(ctx context.Context, userID string) (*User, er
 	err := a.db.QueryRowContext(ctx, query, userID).Scan(
 		&user.ID, &user.AccountID, &user.Email, &user.Role,
 		&firstName, &lastName, &user.Active, &user.EmailVerified,
-		&oauthProvider, &lastLoginAt, &user.CreatedAt, &user.UpdatedAt,
+		&oauthProvider, &lastLoginAt,
+		&user.RateLimitEnabled, &user.RateLimitRequestsPerMin, &user.RateLimitBurstSize,
+		&user.CreatedAt, &user.UpdatedAt,
 	)
 
 	if err == sql.ErrNoRows {
@@ -446,13 +457,17 @@ func (a *AuthService) CreateUser(ctx context.Context, accountID, email, password
 	query := `
 		INSERT INTO control_users (id, account_id, email, password_hash, role, first_name, last_name, active, email_verified)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, true, false)
-		RETURNING id, account_id, email, role, first_name, last_name, active, email_verified, created_at, updated_at
+		RETURNING id, account_id, email, role, first_name, last_name, active, email_verified,
+		          rate_limit_enabled, rate_limit_requests_per_minute, rate_limit_burst_size,
+		          created_at, updated_at
 	`
 
 	var user User
 	err = a.db.QueryRowContext(ctx, query, userID, accountID, email, string(passwordHash), role, firstName, lastName).Scan(
 		&user.ID, &user.AccountID, &user.Email, &user.Role, &user.FirstName, &user.LastName,
-		&user.Active, &user.EmailVerified, &user.CreatedAt, &user.UpdatedAt,
+		&user.Active, &user.EmailVerified,
+		&user.RateLimitEnabled, &user.RateLimitRequestsPerMin, &user.RateLimitBurstSize,
+		&user.CreatedAt, &user.UpdatedAt,
 	)
 
 	if err != nil {
@@ -464,7 +479,7 @@ func (a *AuthService) CreateUser(ctx context.Context, accountID, email, password
 }
 
 // UpdateUser updates user details
-func (a *AuthService) UpdateUser(ctx context.Context, userID, firstName, lastName, role string, active *bool) (*User, error) {
+func (a *AuthService) UpdateUser(ctx context.Context, userID, firstName, lastName, role string, active *bool, rateLimitEnabled *bool, rateLimitRequestsPerMin, rateLimitBurstSize *int) (*User, error) {
 	// Build update query dynamically
 	updates := []string{}
 	args := []interface{}{}
@@ -491,6 +506,24 @@ func (a *AuthService) UpdateUser(ctx context.Context, userID, firstName, lastNam
 	if active != nil {
 		updates = append(updates, fmt.Sprintf("active = $%d", argIndex))
 		args = append(args, *active)
+		argIndex++
+	}
+
+	if rateLimitEnabled != nil {
+		updates = append(updates, fmt.Sprintf("rate_limit_enabled = $%d", argIndex))
+		args = append(args, *rateLimitEnabled)
+		argIndex++
+	}
+
+	if rateLimitRequestsPerMin != nil {
+		updates = append(updates, fmt.Sprintf("rate_limit_requests_per_minute = $%d", argIndex))
+		args = append(args, *rateLimitRequestsPerMin)
+		argIndex++
+	}
+
+	if rateLimitBurstSize != nil {
+		updates = append(updates, fmt.Sprintf("rate_limit_burst_size = $%d", argIndex))
+		args = append(args, *rateLimitBurstSize)
 		argIndex++
 	}
 

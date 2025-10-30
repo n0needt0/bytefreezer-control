@@ -15,7 +15,9 @@ Avoid flattery, compliments, or positive language. Be clear and concise. Do not 
 
 
 requirements:
-- i see on display only records where tenant is and dataset id is NULL. this is worng as i can only see my account/tenant errors . unless i logged in a system administrator
-
-- on system error page, please display on each error account_id, tenant_id and dataset_id. please remove top row where total errors.. to active. leave filters and error data rows. from rows remove active/critical labels as we have no idea if it active.
-- we need to create self healing system, at them monet if control is not avaialble services can not connect and fail to start, therefore requiring restart. please fix it so it does not FATAL but rather waiting for control to become avaialble. perhaps logging errors locally and submitting them when control is ready.
+- when logged in as system administrator i should be able to see all proxies, with account_id, tenant_id, dataset_id label across system.
+- when logged in as system administrator i should be able to see all account:tenants
+- i should not see "add tenant" when logged as system admin, keep it visible for other users, because it requires to be logged into specific account
+- i should not see "Add User" when logged as system administrator
+- on dataset statistics, please replace Total Errors box with "Efficiency" and content xx% reduction factor. (remove that counter from Total Output)
+- need to be able to set API rate limiting by token , and be able to chage/edit it when logged as system administrator on users:edit page, by default need to set rate limit to something usefull

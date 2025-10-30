@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/n0needt0/bytefreezer-control/config"
+	"github.com/n0needt0/bytefreezer-control/services"
 	"github.com/n0needt0/go-goodies/log"
 )
 
@@ -18,18 +19,20 @@ type TokenBucket struct {
 	mutex      sync.Mutex
 }
 
-// RateLimiter manages rate limiting for different IPs
+// RateLimiter manages rate limiting for different users
 type RateLimiter struct {
-	buckets map[string]*TokenBucket
-	config  config.RateLimitConfig
-	mutex   sync.RWMutex
+	buckets     map[string]*TokenBucket // keyed by user ID
+	config      config.RateLimitConfig
+	authService *services.AuthService
+	mutex       sync.RWMutex
 }
 
 // NewRateLimiter creates a new rate limiter
-func NewRateLimiter(config config.RateLimitConfig) *RateLimiter {
+func NewRateLimiter(config config.RateLimitConfig, authService *services.AuthService) *RateLimiter {
 	rl := &RateLimiter{
-		buckets: make(map[string]*TokenBucket),
-		config:  config,
+		buckets:     make(map[string]*TokenBucket),
+		config:      config,
+		authService: authService,
 	}
 
 	// Start cleanup goroutine to remove old buckets
@@ -38,16 +41,38 @@ func NewRateLimiter(config config.RateLimitConfig) *RateLimiter {
 	return rl
 }
 
-// RateLimitMiddleware provides rate limiting middleware
+// RateLimitMiddleware provides token-based (per-user) rate limiting middleware
+// This middleware must be applied AFTER JWT authentication middleware
 func (rl *RateLimiter) RateLimitMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Extract client IP
-			clientIP := getClientIP(r)
+			// Try to get user ID from context (set by JWT auth middleware)
+			userID, ok := r.Context().Value("user_id").(string)
+			if !ok || userID == "" {
+				// No authenticated user - skip rate limiting for public endpoints
+				// (or fall back to IP-based if needed)
+				next.ServeHTTP(w, r)
+				return
+			}
 
-			// Check if request is allowed
-			if !rl.allowRequest(clientIP) {
-				log.Warnf("Rate limit exceeded for IP: %s", clientIP)
+			// Get user details to check rate limit settings
+			user, err := rl.authService.GetUserByID(r.Context(), userID)
+			if err != nil {
+				log.Warnf("Failed to get user for rate limiting: %v", err)
+				// Allow request if we can't get user details (fail open)
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Check if rate limiting is enabled for this user
+			if !user.RateLimitEnabled {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Check if request is allowed based on user's rate limits
+			if !rl.allowRequest(userID, user.RateLimitRequestsPerMin, user.RateLimitBurstSize) {
+				log.Warnf("Rate limit exceeded for user: %s (%s)", userID, user.Email)
 				http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
 				return
 			}
@@ -57,20 +82,29 @@ func (rl *RateLimiter) RateLimitMiddleware() func(http.Handler) http.Handler {
 	}
 }
 
-// allowRequest checks if the request should be allowed based on rate limiting
-func (rl *RateLimiter) allowRequest(clientIP string) bool {
+// allowRequest checks if the request should be allowed based on user's rate limiting
+func (rl *RateLimiter) allowRequest(userID string, requestsPerMin, burstSize int) bool {
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
 
-	bucket, exists := rl.buckets[clientIP]
+	bucket, exists := rl.buckets[userID]
 	if !exists {
 		bucket = &TokenBucket{
-			tokens:     rl.config.BurstSize,
-			capacity:   rl.config.BurstSize,
-			refillRate: rl.config.RequestsPerMinute,
+			tokens:     burstSize,
+			capacity:   burstSize,
+			refillRate: requestsPerMin,
 			lastRefill: time.Now(),
 		}
-		rl.buckets[clientIP] = bucket
+		rl.buckets[userID] = bucket
+	} else {
+		// Update bucket capacity if user's limits changed
+		if bucket.capacity != burstSize || bucket.refillRate != requestsPerMin {
+			bucket.capacity = burstSize
+			bucket.refillRate = requestsPerMin
+			if bucket.tokens > burstSize {
+				bucket.tokens = burstSize
+			}
+		}
 	}
 
 	return bucket.consume()
@@ -111,31 +145,13 @@ func (rl *RateLimiter) cleanupBuckets() {
 	for range ticker.C {
 		rl.mutex.Lock()
 		now := time.Now()
-		for ip, bucket := range rl.buckets {
+		for userID, bucket := range rl.buckets {
 			bucket.mutex.Lock()
 			if now.Sub(bucket.lastRefill) > 30*time.Minute {
-				delete(rl.buckets, ip)
+				delete(rl.buckets, userID)
 			}
 			bucket.mutex.Unlock()
 		}
 		rl.mutex.Unlock()
 	}
-}
-
-// getClientIP extracts the client IP from the request
-func getClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header
-	xff := r.Header.Get("X-Forwarded-For")
-	if xff != "" {
-		return xff
-	}
-
-	// Check X-Real-IP header
-	xri := r.Header.Get("X-Real-IP")
-	if xri != "" {
-		return xri
-	}
-
-	// Fall back to RemoteAddr
-	return r.RemoteAddr
 }

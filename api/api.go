@@ -50,16 +50,16 @@ func (api *API) NewRouter() *web.Service {
 	service.Use(middleware.CORSMiddleware())
 	log.Info("CORS middleware enabled")
 
-	// Add rate limiting middleware if enabled
-	if api.Config.RateLimit.Enabled {
-		rateLimiter := middleware.NewRateLimiter(api.Config.RateLimit)
-		service.Use(rateLimiter.RateLimitMiddleware())
-		log.Info("Rate limiting middleware enabled")
-	}
-
 	// Add authentication middleware (always enabled, but exclude public endpoints)
 	service.Use(middleware.ConditionalJWTAuthMiddleware(api.Config.Auth, api.Services.Auth))
 	log.Info("JWT authentication middleware enabled")
+
+	// Add rate limiting middleware if enabled (must be AFTER auth middleware)
+	if api.Config.RateLimit.Enabled {
+		rateLimiter := middleware.NewRateLimiter(api.Config.RateLimit, api.Services.Auth)
+		service.Use(rateLimiter.RateLimitMiddleware())
+		log.Info("Token-based rate limiting middleware enabled")
+	}
 
 	// Add audit middleware to extract user info and IP for audit logging
 	// This must come AFTER auth middleware so JWT claims are available in context

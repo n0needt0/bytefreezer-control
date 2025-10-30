@@ -2294,6 +2294,9 @@ func (api *API) GetPluginSchemas() usecase.Interactor {
 type ProxyResponse struct {
 	InstanceID     string                 `json:"instance_id"`
 	InstanceAPI    string                 `json:"instance_api"`
+	AccountID      string                 `json:"account_id"`
+	TenantID       string                 `json:"tenant_id,omitempty"`
+	DatasetID      string                 `json:"dataset_id,omitempty"`
 	Status         string                 `json:"status"`
 	LastSeen       string                 `json:"last_seen"`
 	Configuration  map[string]interface{} `json:"configuration"`
@@ -2370,6 +2373,7 @@ func (api *API) GetAccountProxies() usecase.Interactor {
 			proxies[i] = ProxyResponse{
 				InstanceID:     record.InstanceID,
 				InstanceAPI:    record.InstanceAPI,
+				AccountID:      record.AccountID,
 				Status:         record.Status,
 				LastSeen:       record.LastSeen.Format("2006-01-02T15:04:05Z07:00"),
 				Configuration:  configuration,

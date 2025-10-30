@@ -15,6 +15,7 @@ Avoid flattery, compliments, or positive language. Be clear and concise. Do not 
 
 
 requirements:
+- can you replace Overview with Statistics tab? And hide Overview for system admin completely.
 - when logged in as system administrator i should be able to see all proxies, with account_id, tenant_id, dataset_id label across system.
 - when logged in as system administrator i should be able to see all account:tenants
 - i should not see "add tenant" when logged as system admin, keep it visible for other users, because it requires to be logged into specific account

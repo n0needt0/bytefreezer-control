@@ -13,15 +13,16 @@ import (
 
 // Services contains all service instances
 type Services struct {
-	Config              *config.Config
-	Storage             storage.Storage         // New storage layer
-	Database            DatabaseService         // Legacy - to be deprecated
-	HealthService       *HealthService          // Health monitoring service
-	Auth                *AuthService            // Authentication service
-	AuditLog            *AuditLogService        // Audit logging service
-	DatasetTestingService *DatasetTestingService // Periodic dataset testing service
-	Stats               *ControlStats
-	mutex               sync.RWMutex
+	Config                *config.Config
+	Storage               storage.Storage         // New storage layer
+	Database              DatabaseService         // Legacy - to be deprecated
+	HealthService         *HealthService          // Health monitoring service
+	Auth                  *AuthService            // Authentication service
+	AuditLog              *AuditLogService        // Audit logging service
+	DatasetTestingService *DatasetTestingService  // Periodic dataset testing service
+	ErrorReporting        *ErrorReportingService  // Error reporting service
+	Stats                 *ControlStats
+	mutex                 sync.RWMutex
 }
 
 // ControlStats tracks control service statistics
@@ -154,6 +155,10 @@ func NewServices(config *config.Config) *Services {
 				// Initialize audit log service
 				services.AuditLog = NewAuditLogService(db)
 				log.Info("Audit log service initialized")
+
+				// Initialize error reporting service
+				services.ErrorReporting = NewErrorReportingService(db)
+				log.Info("Error reporting service initialized")
 
 				// Initialize dataset testing service (periodic testing every 5 minutes)
 				services.DatasetTestingService = NewDatasetTestingService(services.Storage, services.HealthService)

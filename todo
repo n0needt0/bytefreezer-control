@@ -10,14 +10,16 @@ Avoid flattery, compliments, or positive language. Be clear and concise. Do not 
 - do not attempt ssh connections to db on .137 this is metallb for postgres only
 - when constructing data access logic always remember system account can see everything, account logins can only see their account data
 - stop messing with a code and api path we all on /v1 api
+- always check for unused variables and functions and remove them
 
 
 
 requirements:
+now we have clean and working project.
 
-- there no public api-end points on control (if you find any please list them for my review)
-- all components proxy, receiver, piper and packer use system wide api-token to access control 
-- user authenticates and uses jwt token to access system
-- all data pulled from control is filtered by account_id
-- system administrator can log into other users accounts
-- system administrator sees entire data that is not filtered by account id
+- build error reporting from all services to control via authenticated path (same as you submit health)
+- display errors on ui: System Erros page. this should be filtered by currently logged account_id
+- errors stored in system_errors table
+- repeating errors should be prevented to populate table unlimited and prevent DDOS the system
+- the system errors should also be linked from statistics page from Total Errors and filtered by account_id and dataset selector on Data Set statistics
+- on dataset statistics page , add "All Datasets" on dataset selector, this way we can get total stats for account

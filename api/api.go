@@ -148,6 +148,17 @@ func (api *API) NewRouter() *web.Service {
 	service.Get("/api/v1/audit-logs", api.ListAuditLogs())
 	service.Get("/api/v1/audit-logs/{logId}", api.GetAuditLog())
 
+	// Error reporting endpoints (system services)
+	service.Post("/api/v1/errors", api.ReportError())
+	service.Get("/api/v1/errors", api.ListErrors())
+	service.Get("/api/v1/errors/stats", api.GetErrorStats())
+
+	// Error reporting endpoints (account-scoped)
+	service.Post("/api/v1/accounts/{accountId}/errors", api.ReportAccountError())
+	service.Get("/api/v1/accounts/{accountId}/errors", api.ListAccountErrors())
+	service.Get("/api/v1/accounts/{accountId}/errors/stats", api.GetErrorStats())
+	service.Get("/api/v1/accounts/{accountId}/datasets/{datasetId}/errors", api.ListDatasetErrors())
+
 	// Plugin schema endpoints
 	service.Get("/api/v1/plugins", api.GetPluginSchemas())
 

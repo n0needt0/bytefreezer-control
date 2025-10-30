@@ -1,5 +1,86 @@
 # ByteFreezer Control - Release Notes
 
+## v2.7.0: Centralized Error Reporting System (2025-10-29)
+
+### New Feature: Error Reporting & Tracking
+
+#### 🚨 Centralized Error Reporting System
+- **Feature**: Complete error reporting infrastructure for ecosystem-wide error tracking
+  - All services (proxy, receiver, piper, packer, soc) report errors to central control service
+  - Automatic deduplication prevents database flooding
+  - Adaptive sampling reduces storage for high-frequency errors
+  - Account-based filtering for multi-tenant isolation
+  - Dataset-specific error tracking
+
+### Database Changes
+
+**Migrations**: `11-14_error_tracking`
+- Created `system_errors` table with adaptive sampling
+  - error_hash (unique) for deduplication
+  - occurrence_count tracks total occurrences
+  - sample_rate: adaptive (1.0 → 0.1 → 0.01 → 0.001)
+  - samples_collected/samples_dropped for transparency
+- Created `upsert_system_error()` function for atomic updates
+  - Automatically adjusts sample_rate based on occurrence_count
+  - Prevents DDOS via sampling (100→10%, 1000→1%, 10000→0.1%)
+- Added comprehensive indexes for performance
+- Added update trigger for `updated_at` timestamp
+
+### API Changes
+
+**System Services Endpoints** (Receiver, Packer, Piper, SOC):
+- `POST /api/v1/errors` - Report error with system token auth
+- `GET /api/v1/errors` - List all errors (system admin only)
+- `GET /api/v1/errors/stats` - Get error statistics
+
+**Account-Scoped Endpoints** (Proxy):
+- `POST /api/v1/accounts/{accountId}/errors` - Report error with JWT auth
+- `GET /api/v1/accounts/{accountId}/errors` - List account errors
+- `GET /api/v1/accounts/{accountId}/errors/stats` - Get account error stats
+- `GET /api/v1/accounts/{accountId}/datasets/{datasetId}/errors` - Dataset errors
+
+### Files Changed
+
+**Control Service**:
+- `services/error_reporting.go` - Error reporting service with deduplication
+- `api/error_handlers.go` - API handlers for error reporting
+- `services/services.go` - Added ErrorReporting service
+- `api/api.go` - Registered error reporting endpoints
+
+**Client Libraries** (Packer, Receiver, Piper, Proxy):
+- `errors/error_reporter.go` - Error reporting client
+  - System services use system token authentication
+  - Proxy uses account JWT authentication
+  - Convenience methods: ReportCritical, ReportWarning, ReportErrorWithSample
+
+### Authentication
+
+- **System Services**: Use system API key via `Authorization: Bearer {api_key}`
+- **Proxy**: Uses account JWT token (same as health reporting)
+- **Account Filtering**: System admin sees all errors, accounts see only their errors
+
+### Configuration
+
+**All services now have error_tracking enabled by default:**
+
+```yaml
+error_tracking:
+  enabled: true  # Enable error reporting
+```
+
+Uses existing `control_service.base_url` and `control_service.api_key` configuration.
+
+**Updated Files**:
+- `bytefreezer-packer/config.yaml` - Added error_tracking section
+- `bytefreezer-receiver/config.yaml` - Added error_tracking section
+- `bytefreezer-piper/config.yaml` - Added error_tracking section
+- `bytefreezer-proxy/config.yaml` - Added error_tracking section
+- All Ansible templates (`ansible/playbooks/templates/config.yaml.j2`) - Updated with error_tracking
+
+**Test Scripts**:
+- `scripts/test-error-reporting.sh` - Bash test script for error reporting
+- `scripts/test-error-reporting.py` - Python test script with advanced testing features
+
 ## v2.6.0: Account-Scoped Health Monitoring (2025-10-29)
 
 ### Security Enhancement

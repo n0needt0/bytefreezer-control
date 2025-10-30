@@ -382,12 +382,15 @@ func (h *HealthService) GetAllProxies() ([]HealthRecord, error) {
 	h.mutex.RLock()
 	defer h.mutex.RUnlock()
 
+	// Use DISTINCT ON to ensure we only get one record per (service_type, instance_id, account_id) combination
+	// This prevents duplicates that might exist due to race conditions
 	rows, err := h.db.Query(`
-		SELECT id, service_type, instance_id, instance_api, account_id, status,
+		SELECT DISTINCT ON (service_type, instance_id, COALESCE(account_id, ''))
+		       id, service_type, instance_id, instance_api, account_id, status,
 		       configuration, metrics, response_time_ms, last_seen, created_at, updated_at
 		FROM health_current
 		WHERE service_type = 'bytefreezer-proxy'
-		ORDER BY account_id, instance_id`)
+		ORDER BY service_type, instance_id, COALESCE(account_id, ''), last_seen DESC`)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to query all proxy health records: %w", err)
@@ -421,6 +424,10 @@ func (h *HealthService) GetAllProxies() ([]HealthRecord, error) {
 			return nil, fmt.Errorf("failed to scan proxy health record: %w", err)
 		}
 
+		// Debug logging
+		log.Debugf("GetAllProxies: Found proxy - ID:%d, InstanceID:%s, AccountID:%s, LastSeen:%v",
+			record.ID, record.InstanceID, record.AccountID, record.LastSeen)
+
 		// Parse JSON fields
 		if configJson.Valid {
 			if err := json.Unmarshal([]byte(configJson.String), &record.Configuration); err != nil {
@@ -439,6 +446,7 @@ func (h *HealthService) GetAllProxies() ([]HealthRecord, error) {
 		records = append(records, record)
 	}
 
+	log.Infof("GetAllProxies: Returning %d proxy records", len(records))
 	return records, nil
 }
 

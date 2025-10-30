@@ -156,7 +156,7 @@ func (api *API) NewRouter() *web.Service {
 	// Error reporting endpoints (account-scoped)
 	service.Post("/api/v1/accounts/{accountId}/errors", api.ReportAccountError())
 	service.Get("/api/v1/accounts/{accountId}/errors", api.ListAccountErrors())
-	service.Get("/api/v1/accounts/{accountId}/errors/stats", api.GetErrorStats())
+	service.Get("/api/v1/accounts/{accountId}/errors/stats", api.GetAccountErrorStats())
 	service.Get("/api/v1/accounts/{accountId}/datasets/{datasetId}/errors", api.ListDatasetErrors())
 
 	// Plugin schema endpoints

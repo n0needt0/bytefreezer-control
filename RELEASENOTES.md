@@ -2,6 +2,11 @@
 
 ## v2.7.0: Centralized Error Reporting System (2025-10-29)
 
+**Deployment Status**: ✅ Deployed to tp3 (2025-10-30)
+- Control service deployed and tested
+- Error reporting API endpoints verified
+- Test suite passed (deduplication working, stats API working)
+
 ### New Feature: Error Reporting & Tracking
 
 #### 🚨 Centralized Error Reporting System

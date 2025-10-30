@@ -345,9 +345,9 @@ func (api *API) ListDatasetErrors() usecase.Interactor {
 	return u
 }
 
-// GetErrorStats handles getting error statistics
+// GetErrorStats handles getting error statistics (system-wide, admin only)
 func (api *API) GetErrorStats() usecase.Interactor {
-	u := usecase.NewInteractor(func(ctx context.Context, input ErrorStatsRequest, output *ErrorStatsResponse) error {
+	u := usecase.NewInteractor(func(ctx context.Context, input struct{}, output *ErrorStatsResponse) error {
 		api.Services.IncrementAPIRequests()
 
 		// Extract claims from context
@@ -356,24 +356,16 @@ func (api *API) GetErrorStats() usecase.Interactor {
 			return usecaseStatus.Wrap(fmt.Errorf("authentication required"), usecaseStatus.Unauthenticated)
 		}
 
+		// Only system admins can see all error stats
+		if claims.Role != "system_admin" {
+			return usecaseStatus.Wrap(fmt.Errorf("unauthorized: system admin required"), usecaseStatus.PermissionDenied)
+		}
+
 		if api.Services.ErrorReporting == nil {
 			return usecaseStatus.Wrap(fmt.Errorf("error reporting service not available"), usecaseStatus.InvalidArgument)
 		}
 
-		// If account_id provided, verify access
-		accountID := input.AccountID
-		if accountID != "" {
-			if claims.Role != "system_admin" && claims.AccountID != accountID {
-				return usecaseStatus.Wrap(fmt.Errorf("unauthorized: account mismatch"), usecaseStatus.PermissionDenied)
-			}
-		} else {
-			// If no account_id provided, use the authenticated account (unless system admin)
-			if claims.Role != "system_admin" {
-				accountID = claims.AccountID
-			}
-		}
-
-		stats, err := api.Services.ErrorReporting.GetErrorStats(ctx, accountID)
+		stats, err := api.Services.ErrorReporting.GetErrorStats(ctx, "")
 		if err != nil {
 			return usecaseStatus.Wrap(fmt.Errorf("failed to get error stats: %w", err), usecaseStatus.InvalidArgument)
 		}
@@ -384,8 +376,45 @@ func (api *API) GetErrorStats() usecase.Interactor {
 	})
 
 	u.SetTitle("Get Error Statistics")
-	u.SetDescription("Gets error statistics for an account or globally")
+	u.SetDescription("Gets error statistics for all errors (system admin only)")
 	u.SetTags("errors", "monitoring", "statistics")
+
+	return u
+}
+
+// GetAccountErrorStats handles getting error statistics for a specific account
+func (api *API) GetAccountErrorStats() usecase.Interactor {
+	u := usecase.NewInteractor(func(ctx context.Context, input ErrorStatsRequest, output *ErrorStatsResponse) error {
+		api.Services.IncrementAPIRequests()
+
+		// Extract claims from context
+		claims, ok := ctx.Value(middleware.JWTClaimsContextKey).(*services.JWTClaims)
+		if !ok {
+			return usecaseStatus.Wrap(fmt.Errorf("authentication required"), usecaseStatus.Unauthenticated)
+		}
+
+		// Verify account_id matches the authenticated account (unless system admin)
+		if claims.Role != "system_admin" && claims.AccountID != input.AccountID {
+			return usecaseStatus.Wrap(fmt.Errorf("unauthorized: account mismatch"), usecaseStatus.PermissionDenied)
+		}
+
+		if api.Services.ErrorReporting == nil {
+			return usecaseStatus.Wrap(fmt.Errorf("error reporting service not available"), usecaseStatus.InvalidArgument)
+		}
+
+		stats, err := api.Services.ErrorReporting.GetErrorStats(ctx, input.AccountID)
+		if err != nil {
+			return usecaseStatus.Wrap(fmt.Errorf("failed to get error stats: %w", err), usecaseStatus.InvalidArgument)
+		}
+
+		output.Stats = stats
+
+		return nil
+	})
+
+	u.SetTitle("Get Account Error Statistics")
+	u.SetDescription("Gets error statistics for a specific account")
+	u.SetTags("errors", "monitoring", "statistics", "accounts")
 
 	return u
 }

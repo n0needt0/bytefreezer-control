@@ -346,7 +346,7 @@ func (s *ErrorReportingService) GetErrorStats(ctx context.Context, accountID str
 		SELECT
 			COUNT(*) as total_errors,
 			COUNT(DISTINCT component) as affected_components,
-			SUM(occurrence_count) as total_occurrences,
+			COALESCE(SUM(occurrence_count), 0) as total_occurrences,
 			COUNT(CASE WHEN severity = 'critical' THEN 1 END) as critical_count,
 			COUNT(CASE WHEN severity = 'error' THEN 1 END) as error_count,
 			COUNT(CASE WHEN severity = 'warning' THEN 1 END) as warning_count,

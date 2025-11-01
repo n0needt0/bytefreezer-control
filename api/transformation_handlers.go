@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -299,115 +298,129 @@ func (api *API) ListTransformationJobs() usecase.Interactor {
 }
 
 // GetTransformationSchema proxies schema request to piper
-func (api *API) GetTransformationSchema() usecase.Interactor {
-	type Input struct {
-		TenantID  string `path:"tenantId" required:"true"`
-		DatasetID string `path:"datasetId" required:"true"`
-		Count     int    `query:"count" default:"10"`
-	}
+func (api *API) GetTransformationSchema() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Extract path parameters from chi router context or URL
+		tenantID := r.PathValue("tenantId")
+		datasetID := r.PathValue("datasetId")
+		count := r.URL.Query().Get("count")
+		if count == "" {
+			count = "10"
+		}
 
-	u := usecase.NewInteractor(func(ctx context.Context, input Input, output *json.RawMessage) error {
 		// TODO: Get piper URL from service discovery or config
 		piperURL := "http://192.168.86.96:8090"
-		url := fmt.Sprintf("%s/api/v1/transformations/%s/%s/schema?count=%d", piperURL, input.TenantID, input.DatasetID, input.Count)
+		url := fmt.Sprintf("%s/api/v1/transformations/%s/%s/schema?count=%s", piperURL, tenantID, datasetID, count)
 
-		resp, err := http.Get(url)
+		// Create request with context
+		req, err := http.NewRequestWithContext(r.Context(), "GET", url, nil)
+		if err != nil {
+			log.Errorf("Failed to create proxy request: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		// Make request to piper
+		client := &http.Client{Timeout: 30 * time.Second}
+		resp, err := client.Do(req)
 		if err != nil {
 			log.Errorf("Failed to proxy schema request to piper: %v", err)
-			return usecaseStatus.Wrap(fmt.Errorf("failed to get schema"), usecaseStatus.Internal)
+			http.Error(w, "Failed to connect to piper service", http.StatusServiceUnavailable)
+			return
 		}
 		defer resp.Body.Close()
 
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			log.Errorf("Piper returned status %d for schema request: %s", resp.StatusCode, string(body))
-			return usecaseStatus.Wrap(fmt.Errorf("piper error"), usecaseStatus.Internal)
-		}
-
+		// Read response body
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			log.Errorf("Failed to read piper response: %v", err)
-			return usecaseStatus.Wrap(fmt.Errorf("failed to read response"), usecaseStatus.Internal)
+			http.Error(w, "Failed to read response", http.StatusInternalServerError)
+			return
 		}
 
-		*output = body
-		return nil
-	})
-
-	return u
+		// Forward response status and body
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		w.Write(body) // #nosec G104 - write error not critical for proxy
+	}
 }
 
 // GetTransformationStats proxies stats request to piper
-func (api *API) GetTransformationStats() usecase.Interactor {
-	type Input struct {
-		TenantID  string `path:"tenantId" required:"true"`
-		DatasetID string `path:"datasetId" required:"true"`
-	}
+func (api *API) GetTransformationStats() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		tenantID := r.PathValue("tenantId")
+		datasetID := r.PathValue("datasetId")
 
-	u := usecase.NewInteractor(func(ctx context.Context, input Input, output *json.RawMessage) error {
 		piperURL := "http://192.168.86.96:8090"
-		url := fmt.Sprintf("%s/api/v1/transformations/%s/%s/stats", piperURL, input.TenantID, input.DatasetID)
+		url := fmt.Sprintf("%s/api/v1/transformations/%s/%s/stats", piperURL, tenantID, datasetID)
 
-		resp, err := http.Get(url)
+		req, err := http.NewRequestWithContext(r.Context(), "GET", url, nil)
+		if err != nil {
+			log.Errorf("Failed to create proxy request: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		client := &http.Client{Timeout: 30 * time.Second}
+		resp, err := client.Do(req)
 		if err != nil {
 			log.Errorf("Failed to proxy stats request to piper: %v", err)
-			return usecaseStatus.Wrap(fmt.Errorf("failed to get stats"), usecaseStatus.Internal)
+			http.Error(w, "Failed to connect to piper service", http.StatusServiceUnavailable)
+			return
 		}
 		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			log.Errorf("Piper returned status %d for stats request: %s", resp.StatusCode, string(body))
-			return usecaseStatus.Wrap(fmt.Errorf("piper error"), usecaseStatus.Internal)
-		}
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			log.Errorf("Failed to read piper response: %v", err)
-			return usecaseStatus.Wrap(fmt.Errorf("failed to read response"), usecaseStatus.Internal)
+			http.Error(w, "Failed to read response", http.StatusInternalServerError)
+			return
 		}
 
-		*output = body
-		return nil
-	})
-
-	return u
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		w.Write(body) // #nosec G104 - write error not critical for proxy
+	}
 }
 
 // GetTransformationPreview proxies preview request to piper
-func (api *API) GetTransformationPreview() usecase.Interactor {
-	type Input struct {
-		TenantID  string `path:"tenantId" required:"true"`
-		DatasetID string `path:"datasetId" required:"true"`
-		Count     int    `query:"count" default:"10"`
-	}
+func (api *API) GetTransformationPreview() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		tenantID := r.PathValue("tenantId")
+		datasetID := r.PathValue("datasetId")
+		count := r.URL.Query().Get("count")
+		if count == "" {
+			count = "10"
+		}
 
-	u := usecase.NewInteractor(func(ctx context.Context, input Input, output *json.RawMessage) error {
 		piperURL := "http://192.168.86.96:8090"
-		url := fmt.Sprintf("%s/api/v1/transformations/%s/%s/preview?count=%d", piperURL, input.TenantID, input.DatasetID, input.Count)
+		url := fmt.Sprintf("%s/api/v1/transformations/%s/%s/preview?count=%s", piperURL, tenantID, datasetID, count)
 
-		resp, err := http.Get(url)
+		req, err := http.NewRequestWithContext(r.Context(), "GET", url, nil)
+		if err != nil {
+			log.Errorf("Failed to create proxy request: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		client := &http.Client{Timeout: 30 * time.Second}
+		resp, err := client.Do(req)
 		if err != nil {
 			log.Errorf("Failed to proxy preview request to piper: %v", err)
-			return usecaseStatus.Wrap(fmt.Errorf("failed to get preview"), usecaseStatus.Internal)
+			http.Error(w, "Failed to connect to piper service", http.StatusServiceUnavailable)
+			return
 		}
 		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			log.Errorf("Piper returned status %d for preview request: %s", resp.StatusCode, string(body))
-			return usecaseStatus.Wrap(fmt.Errorf("piper error"), usecaseStatus.Internal)
-		}
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			log.Errorf("Failed to read piper response: %v", err)
-			return usecaseStatus.Wrap(fmt.Errorf("failed to read response"), usecaseStatus.Internal)
+			http.Error(w, "Failed to read response", http.StatusInternalServerError)
+			return
 		}
 
-		*output = body
-		return nil
-	})
-
-	return u
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		w.Write(body) // #nosec G104 - write error not critical for proxy
+	}
 }

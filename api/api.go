@@ -143,10 +143,10 @@ func (api *API) NewRouter() *web.Service {
 	service.Get("/api/v1/transformations/jobs/{jobId}", api.GetTransformationJobStatus())
 	service.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations/jobs", api.ListTransformationJobs())
 
-	// Transformation read-only endpoints (proxy to piper)
-	service.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations/schema", api.GetTransformationSchema())
-	service.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations/stats", api.GetTransformationStats())
-	service.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations/preview", api.GetTransformationPreview())
+	// Transformation read-only endpoints (proxy to piper - using raw HTTP handlers)
+	service.Router.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations/schema", api.GetTransformationSchema())
+	service.Router.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations/stats", api.GetTransformationStats())
+	service.Router.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations/preview", api.GetTransformationPreview())
 
 	// User management endpoints
 	service.Get("/api/v1/users", api.ListUsers())

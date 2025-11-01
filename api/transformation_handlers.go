@@ -2,7 +2,10 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"time"
 
 	"github.com/n0needt0/bytefreezer-control/storage"
@@ -289,6 +292,120 @@ func (api *API) ListTransformationJobs() usecase.Interactor {
 			})
 		}
 
+		return nil
+	})
+
+	return u
+}
+
+// GetTransformationSchema proxies schema request to piper
+func (api *API) GetTransformationSchema() usecase.Interactor {
+	type Input struct {
+		TenantID  string `path:"tenantId" required:"true"`
+		DatasetID string `path:"datasetId" required:"true"`
+		Count     int    `query:"count" default:"10"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input Input, output *json.RawMessage) error {
+		// TODO: Get piper URL from service discovery or config
+		piperURL := "http://192.168.86.96:8090"
+		url := fmt.Sprintf("%s/api/v1/transformations/%s/%s/schema?count=%d", piperURL, input.TenantID, input.DatasetID, input.Count)
+
+		resp, err := http.Get(url)
+		if err != nil {
+			log.Errorf("Failed to proxy schema request to piper: %v", err)
+			return usecaseStatus.Wrap(fmt.Errorf("failed to get schema"), usecaseStatus.Internal)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			log.Errorf("Piper returned status %d for schema request: %s", resp.StatusCode, string(body))
+			return usecaseStatus.Wrap(fmt.Errorf("piper error"), usecaseStatus.Internal)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Errorf("Failed to read piper response: %v", err)
+			return usecaseStatus.Wrap(fmt.Errorf("failed to read response"), usecaseStatus.Internal)
+		}
+
+		*output = body
+		return nil
+	})
+
+	return u
+}
+
+// GetTransformationStats proxies stats request to piper
+func (api *API) GetTransformationStats() usecase.Interactor {
+	type Input struct {
+		TenantID  string `path:"tenantId" required:"true"`
+		DatasetID string `path:"datasetId" required:"true"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input Input, output *json.RawMessage) error {
+		piperURL := "http://192.168.86.96:8090"
+		url := fmt.Sprintf("%s/api/v1/transformations/%s/%s/stats", piperURL, input.TenantID, input.DatasetID)
+
+		resp, err := http.Get(url)
+		if err != nil {
+			log.Errorf("Failed to proxy stats request to piper: %v", err)
+			return usecaseStatus.Wrap(fmt.Errorf("failed to get stats"), usecaseStatus.Internal)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			log.Errorf("Piper returned status %d for stats request: %s", resp.StatusCode, string(body))
+			return usecaseStatus.Wrap(fmt.Errorf("piper error"), usecaseStatus.Internal)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Errorf("Failed to read piper response: %v", err)
+			return usecaseStatus.Wrap(fmt.Errorf("failed to read response"), usecaseStatus.Internal)
+		}
+
+		*output = body
+		return nil
+	})
+
+	return u
+}
+
+// GetTransformationPreview proxies preview request to piper
+func (api *API) GetTransformationPreview() usecase.Interactor {
+	type Input struct {
+		TenantID  string `path:"tenantId" required:"true"`
+		DatasetID string `path:"datasetId" required:"true"`
+		Count     int    `query:"count" default:"10"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input Input, output *json.RawMessage) error {
+		piperURL := "http://192.168.86.96:8090"
+		url := fmt.Sprintf("%s/api/v1/transformations/%s/%s/preview?count=%d", piperURL, input.TenantID, input.DatasetID, input.Count)
+
+		resp, err := http.Get(url)
+		if err != nil {
+			log.Errorf("Failed to proxy preview request to piper: %v", err)
+			return usecaseStatus.Wrap(fmt.Errorf("failed to get preview"), usecaseStatus.Internal)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			log.Errorf("Piper returned status %d for preview request: %s", resp.StatusCode, string(body))
+			return usecaseStatus.Wrap(fmt.Errorf("piper error"), usecaseStatus.Internal)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Errorf("Failed to read piper response: %v", err)
+			return usecaseStatus.Wrap(fmt.Errorf("failed to read response"), usecaseStatus.Internal)
+		}
+
+		*output = body
 		return nil
 	})
 

@@ -257,6 +257,11 @@ type Storage interface {
 	GetAggregatedMetrics(ctx context.Context, filter MetricsQueryFilter) ([]*ComponentMetrics, error)
 	CleanupOldMetrics(ctx context.Context, olderThan time.Time) (int64, error)
 
+	// Transformation Job operations
+	CreateTransformationJob(ctx context.Context, job *TransformationJob) error
+	GetTransformationJob(ctx context.Context, jobID string) (*TransformationJob, error)
+	ListTransformationJobs(ctx context.Context, tenantID, datasetID string) ([]*TransformationJob, error)
+
 	// Utility operations
 	HealthCheck(ctx context.Context) error
 	Migrate(ctx context.Context) error

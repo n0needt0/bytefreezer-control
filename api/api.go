@@ -136,6 +136,13 @@ func (api *API) NewRouter() *web.Service {
 	service.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/metrics", api.QueryDatasetMetrics())
 	service.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/metrics/aggregated", api.GetAggregatedMetrics())
 
+	// Transformation job endpoints (proxy to piper)
+	service.Post("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations/test", api.CreateTransformationTest())
+	service.Post("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations/validate", api.CreateTransformationValidate())
+	service.Post("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations/activate", api.CreateTransformationActivate())
+	service.Get("/api/v1/transformations/jobs/{jobId}", api.GetTransformationJobStatus())
+	service.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations/jobs", api.ListTransformationJobs())
+
 	// User management endpoints
 	service.Get("/api/v1/users", api.ListUsers())
 	service.Get("/api/v1/users/{userId}", api.GetUser())

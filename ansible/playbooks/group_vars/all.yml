@@ -48,25 +48,25 @@ config:
   database:
     enabled: true
     type: "postgresql"
-    host: "192.168.86.137"
-    port: 5432
-    database: "bytefreezer"
-    username: "bytefreezer"
-    password: "bytefreezer123"
-    ssl_mode: "disable"
+    host: "{{ bytefreezer_postgres_host | default('192.168.86.137') }}"
+    port: "{{ bytefreezer_postgres_port | default(5432) }}"
+    database: "{{ bytefreezer_postgres_database | default('bytefreezer') }}"
+    username: "{{ bytefreezer_postgres_username | default('bytefreezer') }}"
+    password: "{{ bytefreezer_postgres_password | default('bytefreezer123') }}"
+    ssl_mode: "{{ bytefreezer_postgres_ssl_mode | default('disable') }}"
     max_connections: 25
     max_idle_connections: 5
 
   # S3 configuration for dataset cleanup operations
   s3:
     enabled: true
-    intake_bucket: "intake"
-    piper_bucket: "piper"
-    region: "us-east-1"
-    endpoint: "192.168.86.125:9000"
-    access_key: "AKIAQNXBAHUKIMJP26P6"
-    secret_key: "SECRET_KEY_AKIAQNXBAHUKIMJP26P6"
-    use_ssl: false
+    intake_bucket: "{{ bytefreezer_s3_intake_bucket | default('intake') }}"
+    piper_bucket: "{{ bytefreezer_s3_piper_bucket | default('piper') }}"
+    region: "{{ bytefreezer_s3_region | default('us-east-1') }}"
+    endpoint: "{{ bytefreezer_s3_endpoint | default('192.168.86.125:9000') }}"
+    access_key: "{{ bytefreezer_s3_access_key | default('AKIAQNXBAHUKIMJP26P6') }}"
+    secret_key: "{{ bytefreezer_s3_secret_key | default('SECRET_KEY_AKIAQNXBAHUKIMJP26P6') }}"
+    use_ssl: "{{ bytefreezer_s3_ssl | default(false) }}"
 
   # OpenTelemetry configuration
   otel:

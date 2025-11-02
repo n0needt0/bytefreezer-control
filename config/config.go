@@ -19,6 +19,7 @@ type Config struct {
 	Auth           AuthConfig           `yaml:"auth"`
 	RateLimit      RateLimitConfig      `yaml:"rate_limit"`
 	HealthReporting HealthReportingConfig `yaml:"health_reporting"`
+	Services       ServicesConfig       `yaml:"services"`
 	Dev            bool                 `yaml:"dev"`
 
 	// Initialized components (set at runtime)
@@ -94,6 +95,12 @@ type HealthReportingConfig struct {
 	ReportInterval    int    `yaml:"report_interval"`    // Interval in seconds
 	TimeoutSeconds    int    `yaml:"timeout_seconds"`
 	RegisterOnStartup bool   `yaml:"register_on_startup"`
+}
+
+type ServicesConfig struct {
+	PiperURL    string `yaml:"piper_url"`    // Piper service URL for transformation proxying
+	ReceiverURL string `yaml:"receiver_url"` // Receiver service URL for health checks
+	PackerURL   string `yaml:"packer_url"`   // Packer service URL for health checks (optional)
 }
 
 // LoadConfig loads configuration from file and environment variables

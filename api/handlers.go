@@ -300,22 +300,43 @@ func (api *API) GetEcosystemHealth() usecase.Interactor {
 		totalCount++
 
 		// Check other services if they're configured
-		// For now, let's add a basic check for receiver service
-		receiverStart := time.Now()
-		receiverHealthy := api.checkServiceHealth("http://192.168.86.103:8081/health")
-		receiverStatus := ServiceHealthStatus{
-			Healthy:      receiverHealthy,
-			ResponseTime: time.Since(receiverStart).String(),
-			LastCheck:    time.Now(),
+		// Check receiver service if configured
+		if api.Config.Services.ReceiverURL != "" {
+			receiverStart := time.Now()
+			receiverHealthy := api.checkServiceHealth(api.Config.Services.ReceiverURL + "/health")
+			receiverStatus := ServiceHealthStatus{
+				Healthy:      receiverHealthy,
+				ResponseTime: time.Since(receiverStart).String(),
+				LastCheck:    time.Now(),
+			}
+			if !receiverHealthy {
+				receiverStatus.Error = "Service unreachable"
+			}
+			services["receiver"] = receiverStatus
+			if receiverHealthy {
+				healthyCount++
+			}
+			totalCount++
 		}
-		if !receiverHealthy {
-			receiverStatus.Error = "Service unreachable"
+
+		// Check piper service if configured
+		if api.Config.Services.PiperURL != "" {
+			piperStart := time.Now()
+			piperHealthy := api.checkServiceHealth(api.Config.Services.PiperURL + "/health")
+			piperStatus := ServiceHealthStatus{
+				Healthy:      piperHealthy,
+				ResponseTime: time.Since(piperStart).String(),
+				LastCheck:    time.Now(),
+			}
+			if !piperHealthy {
+				piperStatus.Error = "Service unreachable"
+			}
+			services["piper"] = piperStatus
+			if piperHealthy {
+				healthyCount++
+			}
+			totalCount++
 		}
-		services["receiver"] = receiverStatus
-		if receiverHealthy {
-			healthyCount++
-		}
-		totalCount++
 
 		// Determine overall status
 		overallStatus := "healthy"

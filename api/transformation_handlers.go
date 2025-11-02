@@ -308,8 +308,13 @@ func (api *API) GetTransformationSchema() http.HandlerFunc {
 			count = "10"
 		}
 
-		// TODO: Get piper URL from service discovery or config
-		piperURL := "http://192.168.86.96:8090"
+		// Get piper URL from config
+		piperURL := api.Config.Services.PiperURL
+		if piperURL == "" {
+			log.Error("Piper URL not configured in services config")
+			http.Error(w, "Piper service not configured", http.StatusServiceUnavailable)
+			return
+		}
 		url := fmt.Sprintf("%s/api/v1/transformations/%s/%s/schema?count=%s", piperURL, tenantID, datasetID, count)
 
 		// Create request with context
@@ -351,7 +356,13 @@ func (api *API) GetTransformationStats() http.HandlerFunc {
 		tenantID := r.PathValue("tenantId")
 		datasetID := r.PathValue("datasetId")
 
-		piperURL := "http://192.168.86.96:8090"
+		// Get piper URL from config
+		piperURL := api.Config.Services.PiperURL
+		if piperURL == "" {
+			log.Error("Piper URL not configured in services config")
+			http.Error(w, "Piper service not configured", http.StatusServiceUnavailable)
+			return
+		}
 		url := fmt.Sprintf("%s/api/v1/transformations/%s/%s/stats", piperURL, tenantID, datasetID)
 
 		req, err := http.NewRequestWithContext(r.Context(), "GET", url, nil)
@@ -393,7 +404,13 @@ func (api *API) GetTransformationPreview() http.HandlerFunc {
 			count = "10"
 		}
 
-		piperURL := "http://192.168.86.96:8090"
+		// Get piper URL from config
+		piperURL := api.Config.Services.PiperURL
+		if piperURL == "" {
+			log.Error("Piper URL not configured in services config")
+			http.Error(w, "Piper service not configured", http.StatusServiceUnavailable)
+			return
+		}
 		url := fmt.Sprintf("%s/api/v1/transformations/%s/%s/preview?count=%s", piperURL, tenantID, datasetID, count)
 
 		req, err := http.NewRequestWithContext(r.Context(), "GET", url, nil)

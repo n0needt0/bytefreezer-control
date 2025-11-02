@@ -44,6 +44,12 @@ config:
   server:
     api_port: 8082
 
+  # Service URLs configuration (for ecosystem health checks and proxying)
+  services:
+    piper_url: "{{ bytefreezer_piper_url | default('http://192.168.86.101:8090') }}"
+    receiver_url: "{{ bytefreezer_receiver_url | default('http://192.168.86.103:8081') }}"
+    packer_url: "{{ bytefreezer_packer_url | default('') }}"
+
   # Database configuration for tenant management
   database:
     enabled: true

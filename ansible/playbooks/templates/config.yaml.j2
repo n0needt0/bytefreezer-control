@@ -73,5 +73,11 @@ health_reporting:
   timeout_seconds: {{ config.health_reporting.timeout_seconds | default(10) }}
   register_on_startup: {{ config.health_reporting.register_on_startup | default(true) | lower }}
 
+# Service URLs configuration (for ecosystem health checks and proxying)
+services:
+  piper_url: "{{ config.services.piper_url | default('') }}"
+  receiver_url: "{{ config.services.receiver_url | default('') }}"
+  packer_url: "{{ config.services.packer_url | default('') }}"
+
 # Development mode
 dev: {{ config.dev | lower }}

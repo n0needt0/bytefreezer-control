@@ -143,16 +143,19 @@ func (api *API) NewRouter() *web.Service {
 	service.Get("/api/v1/transformations/jobs/{jobId}", api.GetTransformationJobStatus())
 	service.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations/jobs", api.ListTransformationJobs())
 
-	// Transformation read-only endpoints (proxy to piper - protected with auth)
+	// Transformation read-only endpoints (proxy to piper - protected with auth and CORS)
+	corsMiddleware := middleware.CORSMiddleware()
 	authMiddleware := middleware.ConditionalJWTAuthMiddleware(api.Config.Auth, api.Services.Auth)
+
+	// Wrap handlers with both CORS and auth middleware
 	service.Router.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations/schema", func(w http.ResponseWriter, r *http.Request) {
-		authMiddleware(api.GetTransformationSchema()).ServeHTTP(w, r)
+		corsMiddleware(authMiddleware(api.GetTransformationSchema())).ServeHTTP(w, r)
 	})
 	service.Router.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations/stats", func(w http.ResponseWriter, r *http.Request) {
-		authMiddleware(api.GetTransformationStats()).ServeHTTP(w, r)
+		corsMiddleware(authMiddleware(api.GetTransformationStats())).ServeHTTP(w, r)
 	})
 	service.Router.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations/preview", func(w http.ResponseWriter, r *http.Request) {
-		authMiddleware(api.GetTransformationPreview()).ServeHTTP(w, r)
+		corsMiddleware(authMiddleware(api.GetTransformationPreview())).ServeHTTP(w, r)
 	})
 
 	// User management endpoints

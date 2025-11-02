@@ -2,7 +2,7 @@ package client
 
 import (
 	"context"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"fmt"
 	"io"
 	"net/http"
@@ -160,7 +160,7 @@ func (c *Client) ListTenants(ctx context.Context, accountID string, limit int) (
 		Items []Tenant `json:"items"`
 		Total int      `json:"total"`
 	}
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := sonic.Unmarshal(body, &response); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
@@ -216,7 +216,7 @@ func (c *Client) ListAccounts(ctx context.Context, limit int) ([]Account, error)
 		Items []Account `json:"items"`
 		Total int       `json:"total"`
 	}
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := sonic.Unmarshal(body, &response); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
@@ -276,7 +276,7 @@ func (c *Client) ListDatasets(ctx context.Context, tenantID string, limit int) (
 		Items []Dataset `json:"items"`
 		Total int       `json:"total"`
 	}
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := sonic.Unmarshal(body, &response); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 

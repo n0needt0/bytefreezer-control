@@ -3,7 +3,7 @@ package health
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"fmt"
 	"net/http"
 	"sync"
@@ -130,7 +130,7 @@ func (r *Reporter) reportLoop(ctx context.Context) {
 func (r *Reporter) sendReport(ctx context.Context) {
 	report := r.buildReport()
 
-	jsonData, err := json.Marshal(report)
+	jsonData, err := sonic.Marshal(report)
 	if err != nil {
 		log.Errorf("Failed to marshal health report: %v", err)
 		return

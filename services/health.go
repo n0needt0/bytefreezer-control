@@ -3,7 +3,7 @@ package services
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"fmt"
 	"net/http"
 	"os"
@@ -72,7 +72,7 @@ func (h *HealthService) RegisterService(registration ServiceRegistration) error 
 		registration.Status = "Starting"
 	}
 
-	configJson, err := json.Marshal(registration.Configuration)
+	configJson, err := sonic.Marshal(registration.Configuration)
 	if err != nil {
 		return fmt.Errorf("failed to marshal configuration: %w", err)
 	}
@@ -117,7 +117,7 @@ func (h *HealthService) UpdateServiceHealth(serviceType, instanceID, instanceAPI
 
 	var metricsValue interface{}
 	if metrics != nil {
-		metricsJson, err := json.Marshal(metrics)
+		metricsJson, err := sonic.Marshal(metrics)
 		if err != nil {
 			log.Errorf("Failed to marshal metrics for %s:%s: %v", serviceType, instanceID, err)
 			return fmt.Errorf("failed to marshal metrics: %w", err)
@@ -132,7 +132,7 @@ func (h *HealthService) UpdateServiceHealth(serviceType, instanceID, instanceAPI
 
 	var configValue interface{}
 	if config != nil {
-		configJson, err := json.Marshal(config)
+		configJson, err := sonic.Marshal(config)
 		if err != nil {
 			log.Errorf("Failed to marshal configuration for %s:%s: %v", serviceType, instanceID, err)
 			return fmt.Errorf("failed to marshal configuration: %w", err)
@@ -227,14 +227,14 @@ func (h *HealthService) GetAllHealthRecords() ([]HealthRecord, error) {
 
 		// Parse JSON fields
 		if configJson.Valid {
-			if err := json.Unmarshal([]byte(configJson.String), &record.Configuration); err != nil {
+			if err := sonic.Unmarshal([]byte(configJson.String), &record.Configuration); err != nil {
 				log.Warnf("Failed to unmarshal configuration for %s:%s: %v",
 					record.ServiceType, record.InstanceID, err)
 			}
 		}
 
 		if metricsJson.Valid {
-			if err := json.Unmarshal([]byte(metricsJson.String), &record.Metrics); err != nil {
+			if err := sonic.Unmarshal([]byte(metricsJson.String), &record.Metrics); err != nil {
 				log.Warnf("Failed to unmarshal metrics for %s:%s: %v",
 					record.ServiceType, record.InstanceID, err)
 			}
@@ -292,14 +292,14 @@ func (h *HealthService) GetHealthRecordsByService(serviceType string) ([]HealthR
 
 		// Parse JSON fields
 		if configJson.Valid {
-			if err := json.Unmarshal([]byte(configJson.String), &record.Configuration); err != nil {
+			if err := sonic.Unmarshal([]byte(configJson.String), &record.Configuration); err != nil {
 				log.Warnf("Failed to unmarshal configuration for %s:%s: %v",
 					record.ServiceType, record.InstanceID, err)
 			}
 		}
 
 		if metricsJson.Valid {
-			if err := json.Unmarshal([]byte(metricsJson.String), &record.Metrics); err != nil {
+			if err := sonic.Unmarshal([]byte(metricsJson.String), &record.Metrics); err != nil {
 				log.Warnf("Failed to unmarshal metrics for %s:%s: %v",
 					record.ServiceType, record.InstanceID, err)
 			}
@@ -358,14 +358,14 @@ func (h *HealthService) GetProxiesByAccount(accountID string) ([]HealthRecord, e
 
 		// Parse JSON fields
 		if configJson.Valid {
-			if err := json.Unmarshal([]byte(configJson.String), &record.Configuration); err != nil {
+			if err := sonic.Unmarshal([]byte(configJson.String), &record.Configuration); err != nil {
 				log.Warnf("Failed to unmarshal configuration for %s:%s: %v",
 					record.ServiceType, record.InstanceID, err)
 			}
 		}
 
 		if metricsJson.Valid {
-			if err := json.Unmarshal([]byte(metricsJson.String), &record.Metrics); err != nil {
+			if err := sonic.Unmarshal([]byte(metricsJson.String), &record.Metrics); err != nil {
 				log.Warnf("Failed to unmarshal metrics for %s:%s: %v",
 					record.ServiceType, record.InstanceID, err)
 			}
@@ -430,14 +430,14 @@ func (h *HealthService) GetAllProxies() ([]HealthRecord, error) {
 
 		// Parse JSON fields
 		if configJson.Valid {
-			if err := json.Unmarshal([]byte(configJson.String), &record.Configuration); err != nil {
+			if err := sonic.Unmarshal([]byte(configJson.String), &record.Configuration); err != nil {
 				log.Warnf("Failed to unmarshal configuration for %s:%s: %v",
 					record.ServiceType, record.InstanceID, err)
 			}
 		}
 
 		if metricsJson.Valid {
-			if err := json.Unmarshal([]byte(metricsJson.String), &record.Metrics); err != nil {
+			if err := sonic.Unmarshal([]byte(metricsJson.String), &record.Metrics); err != nil {
 				log.Warnf("Failed to unmarshal metrics for %s:%s: %v",
 					record.ServiceType, record.InstanceID, err)
 			}
@@ -506,7 +506,7 @@ func (h *HealthService) pollSingleService(record HealthRecord) {
 	// Try to parse response for metrics
 	var metrics map[string]interface{}
 	if resp.StatusCode == 200 {
-		decoder := json.NewDecoder(resp.Body)
+		decoder := sonic.ConfigDefault.NewDecoder(resp.Body)
 		if err := decoder.Decode(&metrics); err != nil {
 			log.Debugf("Failed to decode health response for %s:%s: %v",
 				record.ServiceType, record.InstanceID, err)
@@ -748,14 +748,14 @@ func (h *HealthService) GetHealthRecordsByAccount(accountID string) ([]HealthRec
 
 		// Parse JSON fields
 		if configJson.Valid {
-			if err := json.Unmarshal([]byte(configJson.String), &record.Configuration); err != nil {
+			if err := sonic.Unmarshal([]byte(configJson.String), &record.Configuration); err != nil {
 				log.Warnf("Failed to parse configuration JSON for %s:%s: %v",
 					record.ServiceType, record.InstanceID, err)
 			}
 		}
 
 		if metricsJson.Valid {
-			if err := json.Unmarshal([]byte(metricsJson.String), &record.Metrics); err != nil {
+			if err := sonic.Unmarshal([]byte(metricsJson.String), &record.Metrics); err != nil {
 				log.Warnf("Failed to parse metrics JSON for %s:%s: %v",
 					record.ServiceType, record.InstanceID, err)
 			}
@@ -814,14 +814,14 @@ func (h *HealthService) GetHealthRecordsByAccountAndService(accountID, serviceTy
 
 		// Parse JSON fields
 		if configJson.Valid {
-			if err := json.Unmarshal([]byte(configJson.String), &record.Configuration); err != nil {
+			if err := sonic.Unmarshal([]byte(configJson.String), &record.Configuration); err != nil {
 				log.Warnf("Failed to parse configuration JSON for %s:%s: %v",
 					record.ServiceType, record.InstanceID, err)
 			}
 		}
 
 		if metricsJson.Valid {
-			if err := json.Unmarshal([]byte(metricsJson.String), &record.Metrics); err != nil {
+			if err := sonic.Unmarshal([]byte(metricsJson.String), &record.Metrics); err != nil {
 				log.Warnf("Failed to parse metrics JSON for %s:%s: %v",
 					record.ServiceType, record.InstanceID, err)
 			}

@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"fmt"
 
 	"github.com/lib/pq"
@@ -44,12 +44,12 @@ func (p *PostgreSQLStorage) UpsertProxyConfig(ctx context.Context, config *Proxy
 	config.ConfigHash = configHash
 
 	// Marshal JSONB fields
-	pluginConfigsJSON, err := json.Marshal(config.PluginConfigs)
+	pluginConfigsJSON, err := sonic.Marshal(config.PluginConfigs)
 	if err != nil {
 		return fmt.Errorf("failed to marshal plugin configs: %w", err)
 	}
 
-	proxySettingsJSON, err := json.Marshal(config.ProxySettings)
+	proxySettingsJSON, err := sonic.Marshal(config.ProxySettings)
 	if err != nil {
 		return fmt.Errorf("failed to marshal proxy settings: %w", err)
 	}
@@ -127,11 +127,11 @@ func (p *PostgreSQLStorage) GetProxyConfig(ctx context.Context, instanceID, tena
 	}
 
 	// Unmarshal JSONB fields
-	if err := json.Unmarshal(pluginConfigsJSON, &config.PluginConfigs); err != nil {
+	if err := sonic.Unmarshal(pluginConfigsJSON, &config.PluginConfigs); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal plugin configs: %w", err)
 	}
 
-	if err := json.Unmarshal(proxySettingsJSON, &config.ProxySettings); err != nil {
+	if err := sonic.Unmarshal(proxySettingsJSON, &config.ProxySettings); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal proxy settings: %w", err)
 	}
 
@@ -181,11 +181,11 @@ func (p *PostgreSQLStorage) ListProxyConfigs(ctx context.Context, tenantID strin
 		}
 
 		// Unmarshal JSONB fields
-		if err := json.Unmarshal(pluginConfigsJSON, &config.PluginConfigs); err != nil {
+		if err := sonic.Unmarshal(pluginConfigsJSON, &config.PluginConfigs); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal plugin configs: %w", err)
 		}
 
-		if err := json.Unmarshal(proxySettingsJSON, &config.ProxySettings); err != nil {
+		if err := sonic.Unmarshal(proxySettingsJSON, &config.ProxySettings); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal proxy settings: %w", err)
 		}
 
@@ -242,11 +242,11 @@ func (p *PostgreSQLStorage) ListAllProxyConfigs(ctx context.Context) ([]*ProxyIn
 		}
 
 		// Unmarshal JSONB fields
-		if err := json.Unmarshal(pluginConfigsJSON, &config.PluginConfigs); err != nil {
+		if err := sonic.Unmarshal(pluginConfigsJSON, &config.PluginConfigs); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal plugin configs: %w", err)
 		}
 
-		if err := json.Unmarshal(proxySettingsJSON, &config.ProxySettings); err != nil {
+		if err := sonic.Unmarshal(proxySettingsJSON, &config.ProxySettings); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal proxy settings: %w", err)
 		}
 
@@ -306,11 +306,11 @@ func (p *PostgreSQLStorage) ListProxyConfigsForAccount(ctx context.Context, acco
 		}
 
 		// Unmarshal JSONB fields
-		if err := json.Unmarshal(pluginConfigsJSON, &config.PluginConfigs); err != nil {
+		if err := sonic.Unmarshal(pluginConfigsJSON, &config.PluginConfigs); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal plugin configs: %w", err)
 		}
 
-		if err := json.Unmarshal(proxySettingsJSON, &config.ProxySettings); err != nil {
+		if err := sonic.Unmarshal(proxySettingsJSON, &config.ProxySettings); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal proxy settings: %w", err)
 		}
 
@@ -415,11 +415,11 @@ func (p *PostgreSQLStorage) GetProxyConfigHistory(ctx context.Context, instanceI
 		}
 
 		// Unmarshal JSONB fields
-		if err := json.Unmarshal(pluginConfigsJSON, &record.PluginConfigs); err != nil {
+		if err := sonic.Unmarshal(pluginConfigsJSON, &record.PluginConfigs); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal plugin configs: %w", err)
 		}
 
-		if err := json.Unmarshal(proxySettingsJSON, &record.ProxySettings); err != nil {
+		if err := sonic.Unmarshal(proxySettingsJSON, &record.ProxySettings); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal proxy settings: %w", err)
 		}
 
@@ -451,7 +451,7 @@ func calculateConfigHash(pluginConfigs []map[string]interface{}, proxySettings P
 		ProxySettings: proxySettings,
 	}
 
-	data, err := json.Marshal(combined)
+	data, err := sonic.Marshal(combined)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal config for hashing: %w", err)
 	}

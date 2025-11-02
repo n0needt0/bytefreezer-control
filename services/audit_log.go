@@ -3,7 +3,7 @@ package services
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"strings"
 
 	"github.com/n0needt0/go-goodies/log"
@@ -100,7 +100,7 @@ func (a *AuditLogService) LogAction(ctx context.Context, userID, userEmail, acco
 	}
 
 	// Convert masked details to JSON
-	detailsJSON, err := json.Marshal(maskedDetails)
+	detailsJSON, err := sonic.Marshal(maskedDetails)
 	if err != nil {
 		log.Warnf("Failed to marshal audit log details: %v", err)
 		detailsJSON = []byte("{}")

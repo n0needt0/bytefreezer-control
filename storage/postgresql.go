@@ -3,7 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"fmt"
 	"time"
 
@@ -74,7 +74,7 @@ func (p *PostgreSQLStorage) CreateAccount(ctx context.Context, account *Account)
 	account.CreatedAt = now
 	account.UpdatedAt = now
 
-	configJSON, err := json.Marshal(account.Config)
+	configJSON, err := sonic.Marshal(account.Config)
 	if err != nil {
 		return fmt.Errorf("failed to marshal account config: %w", err)
 	}
@@ -116,7 +116,7 @@ func (p *PostgreSQLStorage) GetAccount(ctx context.Context, id string) (*Account
 		return nil, fmt.Errorf("failed to get account: %w", err)
 	}
 
-	if err := json.Unmarshal(configJSON, &account.Config); err != nil {
+	if err := sonic.Unmarshal(configJSON, &account.Config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal account config: %w", err)
 	}
 
@@ -142,7 +142,7 @@ func (p *PostgreSQLStorage) GetAccountByEmail(ctx context.Context, email string)
 		return nil, fmt.Errorf("failed to get account by email: %w", err)
 	}
 
-	if err := json.Unmarshal(configJSON, &account.Config); err != nil {
+	if err := sonic.Unmarshal(configJSON, &account.Config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal account config: %w", err)
 	}
 
@@ -152,7 +152,7 @@ func (p *PostgreSQLStorage) GetAccountByEmail(ctx context.Context, email string)
 func (p *PostgreSQLStorage) UpdateAccount(ctx context.Context, account *Account) error {
 	account.UpdatedAt = time.Now()
 
-	configJSON, err := json.Marshal(account.Config)
+	configJSON, err := sonic.Marshal(account.Config)
 	if err != nil {
 		return fmt.Errorf("failed to marshal account config: %w", err)
 	}
@@ -231,7 +231,7 @@ func (p *PostgreSQLStorage) ListAccounts(ctx context.Context, opts ListOptions) 
 			return nil, fmt.Errorf("failed to scan account: %w", err)
 		}
 
-		if err := json.Unmarshal(configJSON, &account.Config); err != nil {
+		if err := sonic.Unmarshal(configJSON, &account.Config); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal account config: %w", err)
 		}
 
@@ -259,7 +259,7 @@ func (p *PostgreSQLStorage) CreateTenant(ctx context.Context, tenant *Tenant) er
 	tenant.CreatedAt = now
 	tenant.UpdatedAt = now
 
-	configJSON, err := json.Marshal(tenant.Config)
+	configJSON, err := sonic.Marshal(tenant.Config)
 	if err != nil {
 		return fmt.Errorf("failed to marshal tenant config: %w", err)
 	}
@@ -301,7 +301,7 @@ func (p *PostgreSQLStorage) GetTenant(ctx context.Context, accountID, tenantID s
 		return nil, fmt.Errorf("failed to get tenant: %w", err)
 	}
 
-	if err := json.Unmarshal(configJSON, &tenant.Config); err != nil {
+	if err := sonic.Unmarshal(configJSON, &tenant.Config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal tenant config: %w", err)
 	}
 
@@ -328,7 +328,7 @@ func (p *PostgreSQLStorage) GetTenantByID(ctx context.Context, tenantID string) 
 		return nil, fmt.Errorf("failed to get tenant by ID: %w", err)
 	}
 
-	if err := json.Unmarshal(configJSON, &tenant.Config); err != nil {
+	if err := sonic.Unmarshal(configJSON, &tenant.Config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal tenant config: %w", err)
 	}
 
@@ -338,7 +338,7 @@ func (p *PostgreSQLStorage) GetTenantByID(ctx context.Context, tenantID string) 
 func (p *PostgreSQLStorage) UpdateTenant(ctx context.Context, tenant *Tenant) error {
 	tenant.UpdatedAt = time.Now()
 
-	configJSON, err := json.Marshal(tenant.Config)
+	configJSON, err := sonic.Marshal(tenant.Config)
 	if err != nil {
 		return fmt.Errorf("failed to marshal tenant config: %w", err)
 	}
@@ -417,7 +417,7 @@ func (p *PostgreSQLStorage) ListTenants(ctx context.Context, accountID string, o
 			return nil, fmt.Errorf("failed to scan tenant: %w", err)
 		}
 
-		if err := json.Unmarshal(configJSON, &tenant.Config); err != nil {
+		if err := sonic.Unmarshal(configJSON, &tenant.Config); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal tenant config: %w", err)
 		}
 
@@ -459,7 +459,7 @@ func (p *PostgreSQLStorage) ListAllTenants(ctx context.Context, opts ListOptions
 			return nil, fmt.Errorf("failed to scan tenant: %w", err)
 		}
 
-		if err := json.Unmarshal(configJSON, &tenant.Config); err != nil {
+		if err := sonic.Unmarshal(configJSON, &tenant.Config); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal tenant config: %w", err)
 		}
 
@@ -504,7 +504,7 @@ func (p *PostgreSQLStorage) ListTenantsForAccount(ctx context.Context, accountID
 			return nil, fmt.Errorf("failed to scan tenant: %w", err)
 		}
 
-		if err := json.Unmarshal(configJSON, &tenant.Config); err != nil {
+		if err := sonic.Unmarshal(configJSON, &tenant.Config); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal tenant config: %w", err)
 		}
 
@@ -565,7 +565,7 @@ func (p *PostgreSQLStorage) queryTenants(ctx context.Context, query string, args
 			return nil, fmt.Errorf("failed to scan tenant: %w", err)
 		}
 
-		if err := json.Unmarshal(configJSON, &tenant.Config); err != nil {
+		if err := sonic.Unmarshal(configJSON, &tenant.Config); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal tenant config: %w", err)
 		}
 
@@ -590,7 +590,7 @@ func (p *PostgreSQLStorage) CreateDataset(ctx context.Context, dataset *Dataset)
 	dataset.CreatedAt = now
 	dataset.UpdatedAt = now
 
-	configJSON, err := json.Marshal(dataset.Config)
+	configJSON, err := sonic.Marshal(dataset.Config)
 	if err != nil {
 		return fmt.Errorf("failed to marshal dataset config: %w", err)
 	}
@@ -660,7 +660,7 @@ func (p *PostgreSQLStorage) GetDataset(ctx context.Context, tenantID, datasetID 
 		dataset.OutputTestMessage = ""
 	}
 
-	if err := json.Unmarshal(configJSON, &dataset.Config); err != nil {
+	if err := sonic.Unmarshal(configJSON, &dataset.Config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal dataset config: %w", err)
 	}
 
@@ -670,7 +670,7 @@ func (p *PostgreSQLStorage) GetDataset(ctx context.Context, tenantID, datasetID 
 func (p *PostgreSQLStorage) UpdateDataset(ctx context.Context, dataset *Dataset) error {
 	dataset.UpdatedAt = time.Now()
 
-	configJSON, err := json.Marshal(dataset.Config)
+	configJSON, err := sonic.Marshal(dataset.Config)
 	if err != nil {
 		return fmt.Errorf("failed to marshal dataset config: %w", err)
 	}
@@ -828,7 +828,7 @@ func (p *PostgreSQLStorage) ListDatasets(ctx context.Context, tenantID string, o
 			dataset.OutputTestMessage = outputTestMessage.String
 		}
 
-		if err := json.Unmarshal(configJSON, &dataset.Config); err != nil {
+		if err := sonic.Unmarshal(configJSON, &dataset.Config); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal dataset config: %w", err)
 		}
 
@@ -920,7 +920,7 @@ func (p *PostgreSQLStorage) ListAllDatasets(ctx context.Context, opts ListOption
 			dataset.OutputTestMessage = outputTestMessage.String
 		}
 
-		if err := json.Unmarshal(configJSON, &dataset.Config); err != nil {
+		if err := sonic.Unmarshal(configJSON, &dataset.Config); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal dataset config: %w", err)
 		}
 
@@ -1006,7 +1006,7 @@ func (p *PostgreSQLStorage) ListDatasetsForAccount(ctx context.Context, accountI
 
 		// Parse config JSON
 		if len(configJSON) > 0 {
-			if err := json.Unmarshal(configJSON, &dataset.Config); err != nil {
+			if err := sonic.Unmarshal(configJSON, &dataset.Config); err != nil {
 				log.Warnf("Failed to unmarshal dataset config for %s: %v", dataset.ID, err)
 				dataset.Config = DatasetConfig{} // Set empty config on error
 			}
@@ -1094,7 +1094,7 @@ func (p *PostgreSQLStorage) queryDatasets(ctx context.Context, query string, arg
 			dataset.OutputTestMessage = outputTestMessage.String
 		}
 
-		if err := json.Unmarshal(configJSON, &dataset.Config); err != nil {
+		if err := sonic.Unmarshal(configJSON, &dataset.Config); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal dataset config: %w", err)
 		}
 
@@ -1277,7 +1277,7 @@ func (p *PostgreSQLStorage) ListAuditLogs(ctx context.Context, filter AuditLogFi
 
 		// Unmarshal details JSON
 		if len(detailsJSON) > 0 {
-			if err := json.Unmarshal(detailsJSON, &log.Details); err != nil {
+			if err := sonic.Unmarshal(detailsJSON, &log.Details); err != nil {
 				return nil, fmt.Errorf("failed to unmarshal audit log details: %w", err)
 			}
 		}
@@ -1386,7 +1386,7 @@ func (p *PostgreSQLStorage) GetAuditLog(ctx context.Context, id int64) (*AuditLo
 
 	// Unmarshal details JSON
 	if len(detailsJSON) > 0 {
-		if err := json.Unmarshal(detailsJSON, &log.Details); err != nil {
+		if err := sonic.Unmarshal(detailsJSON, &log.Details); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal audit log details: %w", err)
 		}
 	}

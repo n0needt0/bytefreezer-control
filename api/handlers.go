@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base32"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"fmt"
 	"strings"
 	"time"
@@ -986,10 +986,10 @@ func (api *API) UpdateTenant() usecase.Interactor {
 		}
 		if input.Config != nil {
 			// Deep copy the old config to prevent reference sharing
-			oldConfigBytes, err := json.Marshal(tenant.Config)
+			oldConfigBytes, err := sonic.Marshal(tenant.Config)
 			if err == nil {
 				var oldConfigCopy storage.TenantConfig
-				if err := json.Unmarshal(oldConfigBytes, &oldConfigCopy); err == nil {
+				if err := sonic.Unmarshal(oldConfigBytes, &oldConfigCopy); err == nil {
 					// Store full config in audit log (backend)
 					oldValues["config"] = oldConfigCopy
 					changes["config"] = *input.Config
@@ -1457,10 +1457,10 @@ func (api *API) UpdateDataset() usecase.Interactor {
 		}
 		if input.Config != nil {
 			// Deep copy the old config to prevent reference sharing
-			oldConfigBytes, err := json.Marshal(dataset.Config)
+			oldConfigBytes, err := sonic.Marshal(dataset.Config)
 			if err == nil {
 				var oldConfigCopy storage.DatasetConfig
-				if err := json.Unmarshal(oldConfigBytes, &oldConfigCopy); err == nil {
+				if err := sonic.Unmarshal(oldConfigBytes, &oldConfigCopy); err == nil {
 					// Redact sensitive credentials before storing in audit log
 					oldValues["config"] = redactDatasetConfigCredentials(oldConfigCopy)
 					changes["config"] = redactDatasetConfigCredentials(*input.Config)
@@ -2704,8 +2704,8 @@ func computeConfigDiff(oldConfig, newConfig interface{}) (oldDiff, newDiff map[s
 	newDiff = make(map[string]interface{})
 
 	// Marshal both configs to JSON for comparison
-	oldBytes, err1 := json.Marshal(oldConfig)
-	newBytes, err2 := json.Marshal(newConfig)
+	oldBytes, err1 := sonic.Marshal(oldConfig)
+	newBytes, err2 := sonic.Marshal(newConfig)
 	if err1 != nil || err2 != nil {
 		// If marshaling fails, return empty diffs
 		return
@@ -2713,8 +2713,8 @@ func computeConfigDiff(oldConfig, newConfig interface{}) (oldDiff, newDiff map[s
 
 	// Unmarshal to generic maps for comparison
 	var oldMap, newMap map[string]interface{}
-	json.Unmarshal(oldBytes, &oldMap)
-	json.Unmarshal(newBytes, &newMap)
+	sonic.Unmarshal(oldBytes, &oldMap)
+	sonic.Unmarshal(newBytes, &newMap)
 
 	// Compare the two maps recursively
 	compareMap("", oldMap, newMap, oldDiff, newDiff)
@@ -2765,8 +2765,8 @@ func compareMap(prefix string, oldMap, newMap map[string]interface{}, oldDiff, n
 			compareMap(path, oldMapVal, newMapVal, oldDiff, newDiff)
 		} else {
 			// Compare values directly
-			oldJSON, _ := json.Marshal(oldVal)
-			newJSON, _ := json.Marshal(newVal)
+			oldJSON, _ := sonic.Marshal(oldVal)
+			newJSON, _ := sonic.Marshal(newVal)
 			if string(oldJSON) != string(newJSON) {
 				oldDiff[path] = oldVal
 				newDiff[path] = newVal
@@ -2778,13 +2778,13 @@ func compareMap(prefix string, oldMap, newMap map[string]interface{}, oldDiff, n
 // redactDatasetConfigCredentials creates a copy of the DatasetConfig with sensitive credentials masked
 func redactDatasetConfigCredentials(config storage.DatasetConfig) storage.DatasetConfig {
 	// Create a deep copy by marshaling and unmarshaling
-	configBytes, err := json.Marshal(config)
+	configBytes, err := sonic.Marshal(config)
 	if err != nil {
 		return config // Return original if can't copy
 	}
 
 	var redactedConfig storage.DatasetConfig
-	if err := json.Unmarshal(configBytes, &redactedConfig); err != nil {
+	if err := sonic.Unmarshal(configBytes, &redactedConfig); err != nil {
 		return config // Return original if can't copy
 	}
 

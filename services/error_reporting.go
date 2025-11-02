@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"fmt"
 	"time"
 
@@ -105,7 +105,7 @@ func (s *ErrorReportingService) ReportError(ctx context.Context, report ErrorRep
 	var errorSampleJSON []byte
 	var err error
 	if report.ErrorSample != nil {
-		errorSampleJSON, err = json.Marshal(report.ErrorSample)
+		errorSampleJSON, err = sonic.Marshal(report.ErrorSample)
 		if err != nil {
 			log.Warnf("Failed to marshal error sample: %v", err)
 			errorSampleJSON = []byte("{}")
@@ -116,7 +116,7 @@ func (s *ErrorReportingService) ReportError(ctx context.Context, report ErrorRep
 
 	var metadataJSON []byte
 	if report.Metadata != nil {
-		metadataJSON, err = json.Marshal(report.Metadata)
+		metadataJSON, err = sonic.Marshal(report.Metadata)
 		if err != nil {
 			log.Warnf("Failed to marshal metadata: %v", err)
 			metadataJSON = []byte("{}")
@@ -265,13 +265,13 @@ func (s *ErrorReportingService) ListErrors(ctx context.Context, filter ErrorList
 
 		// Unmarshal JSON fields
 		if len(errorSampleJSON) > 0 {
-			if err := json.Unmarshal(errorSampleJSON, &e.ErrorSample); err != nil {
+			if err := sonic.Unmarshal(errorSampleJSON, &e.ErrorSample); err != nil {
 				log.Warnf("Failed to unmarshal error sample: %v", err)
 			}
 		}
 
 		if len(metadataJSON) > 0 {
-			if err := json.Unmarshal(metadataJSON, &e.Metadata); err != nil {
+			if err := sonic.Unmarshal(metadataJSON, &e.Metadata); err != nil {
 				log.Warnf("Failed to unmarshal metadata: %v", err)
 			}
 		}

@@ -3,7 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"fmt"
 	"time"
 )
@@ -23,7 +23,7 @@ func (s *PostgreSQLStorage) RecordDatasetMetric(ctx context.Context, metric *Dat
 	metric.DayBucket = &dayBucket
 
 	// Serialize custom_metrics to JSONB
-	customMetricsJSON, err := json.Marshal(metric.CustomMetrics)
+	customMetricsJSON, err := sonic.Marshal(metric.CustomMetrics)
 	if err != nil {
 		return fmt.Errorf("failed to marshal custom_metrics: %w", err)
 	}
@@ -125,7 +125,7 @@ func (s *PostgreSQLStorage) QueryDatasetMetrics(ctx context.Context, filter Metr
 
 		// Deserialize custom_metrics
 		if len(customMetricsJSON) > 0 {
-			if err := json.Unmarshal(customMetricsJSON, &metric.CustomMetrics); err != nil {
+			if err := sonic.Unmarshal(customMetricsJSON, &metric.CustomMetrics); err != nil {
 				return nil, fmt.Errorf("failed to unmarshal custom_metrics: %w", err)
 			}
 		}

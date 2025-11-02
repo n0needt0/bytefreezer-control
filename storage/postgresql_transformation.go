@@ -3,7 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"fmt"
 	"time"
 
@@ -37,7 +37,7 @@ func (s *PostgreSQLStorage) CreateTransformationJob(ctx context.Context, job *Tr
 	}
 
 	// Marshal request to JSON
-	requestJSON, err := json.Marshal(job.Request)
+	requestJSON, err := sonic.Marshal(job.Request)
 	if err != nil {
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
@@ -111,13 +111,13 @@ func (s *PostgreSQLStorage) GetTransformationJob(ctx context.Context, jobID stri
 
 	// Unmarshal request and result
 	if len(requestJSON) > 0 {
-		if err := json.Unmarshal(requestJSON, &job.Request); err != nil {
+		if err := sonic.Unmarshal(requestJSON, &job.Request); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal request: %w", err)
 		}
 	}
 
 	if len(resultJSON) > 0 {
-		if err := json.Unmarshal(resultJSON, &job.Result); err != nil {
+		if err := sonic.Unmarshal(resultJSON, &job.Result); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal result: %w", err)
 		}
 	}
@@ -189,13 +189,13 @@ func (s *PostgreSQLStorage) ListTransformationJobs(ctx context.Context, tenantID
 
 		// Unmarshal request and result
 		if len(requestJSON) > 0 {
-			if err := json.Unmarshal(requestJSON, &job.Request); err != nil {
+			if err := sonic.Unmarshal(requestJSON, &job.Request); err != nil {
 				return nil, fmt.Errorf("failed to unmarshal request: %w", err)
 			}
 		}
 
 		if len(resultJSON) > 0 {
-			if err := json.Unmarshal(resultJSON, &job.Result); err != nil {
+			if err := sonic.Unmarshal(resultJSON, &job.Result); err != nil {
 				return nil, fmt.Errorf("failed to unmarshal result: %w", err)
 			}
 		}

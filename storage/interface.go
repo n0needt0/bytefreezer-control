@@ -6,15 +6,23 @@ import (
 	"time"
 )
 
+// Account deployment types
+const (
+	DeploymentTypeManaged    = "managed"     // Fully managed by ByteFreezer (compute + storage)
+	DeploymentTypeOnPrem     = "on_prem"     // Customer-hosted compute, central control plane
+	DeploymentTypeAirGapped  = "air_gapped"  // Fully customer-managed, no external control
+)
+
 // Account represents a ByteFreezer account (top-level entity that owns tenants)
 type Account struct {
-	ID        string        `json:"id" db:"id"`
-	Name      string        `json:"name" db:"name"`
-	Email     string        `json:"email" db:"email"`
-	Active    bool          `json:"active" db:"active"`
-	CreatedAt time.Time     `json:"created_at" db:"created_at"`
-	UpdatedAt time.Time     `json:"updated_at" db:"updated_at"`
-	Config    AccountConfig `json:"config" db:"config"`
+	ID             string        `json:"id" db:"id"`
+	Name           string        `json:"name" db:"name"`
+	Email          string        `json:"email" db:"email"`
+	Active         bool          `json:"active" db:"active"`
+	DeploymentType string        `json:"deployment_type" db:"deployment_type"` // managed, on_prem, air_gapped
+	CreatedAt      time.Time     `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time     `json:"updated_at" db:"updated_at"`
+	Config         AccountConfig `json:"config" db:"config"`
 }
 
 // AccountConfig represents account-level configuration (shared by all tenants)
@@ -190,6 +198,118 @@ type ListResult[T any] struct {
 	Total      int    `json:"total"`
 }
 
+// ============================================================================
+// PIPER DATA TYPES
+// ============================================================================
+
+// PiperFileLock represents a file lock for distributed processing
+type PiperFileLock struct {
+	LockID        int64     `json:"lock_id" db:"lock_id"`
+	TenantID      string    `json:"tenant_id" db:"tenant_id"`
+	DatasetID     string    `json:"dataset_id" db:"dataset_id"`
+	FileKey       string    `json:"file_key" db:"file_key"`
+	LockedBy      string    `json:"locked_by" db:"locked_by"`
+	LockTimestamp time.Time `json:"lock_timestamp" db:"lock_timestamp"`
+	LastHeartbeat time.Time `json:"last_heartbeat" db:"last_heartbeat"`
+	TTL           time.Time `json:"ttl" db:"ttl"`
+}
+
+// PiperJobRecord represents a job record for tracking processing jobs
+type PiperJobRecord struct {
+	JobID            string    `json:"job_id" db:"job_id"`
+	TenantID         string    `json:"tenant_id" db:"tenant_id"`
+	DatasetID        string    `json:"dataset_id" db:"dataset_id"`
+	Status           string    `json:"status" db:"status"`
+	SourceFiles      []string  `json:"source_files" db:"source_files"`
+	ProcessorType    string    `json:"processor_type" db:"processor_type"`
+	ProcessorID      string    `json:"processor_id" db:"processor_id"`
+	OutputFile       string    `json:"output_file" db:"output_file"`
+	ErrorMessage     string    `json:"error_message" db:"error_message"`
+	RecordsProcessed int64     `json:"records_processed" db:"records_processed"`
+	CreatedAt        time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// PiperPipelineCache represents cached pipeline configuration
+type PiperPipelineCache struct {
+	ConfigKey     string                 `json:"config_key" db:"config_key"`
+	TenantID      string                 `json:"tenant_id" db:"tenant_id"`
+	DatasetID     string                 `json:"dataset_id" db:"dataset_id"`
+	Configuration map[string]interface{} `json:"configuration" db:"configuration"`
+	CachedAt      time.Time              `json:"cached_at" db:"cached_at"`
+	ExpiresAt     time.Time              `json:"expires_at" db:"expires_at"`
+}
+
+// PiperTenantCache represents cached tenant information
+type PiperTenantCache struct {
+	TenantID   string                 `json:"tenant_id" db:"tenant_id"`
+	TenantData map[string]interface{} `json:"tenant_data" db:"tenant_data"`
+	CachedAt   time.Time              `json:"cached_at" db:"cached_at"`
+	ExpiresAt  time.Time              `json:"expires_at" db:"expires_at"`
+}
+
+// ============================================================================
+// PACKER DATA TYPES
+// ============================================================================
+
+// PackerTenantLock represents a tenant lock for packer operations
+type PackerTenantLock struct {
+	TenantID      string    `json:"tenant_id" db:"tenant_id"`
+	LockedBy      string    `json:"locked_by" db:"locked_by"`
+	LockTimestamp time.Time `json:"lock_timestamp" db:"lock_timestamp"`
+	LastHeartbeat time.Time `json:"last_heartbeat" db:"last_heartbeat"`
+	TTL           time.Time `json:"ttl" db:"ttl"`
+}
+
+// PackerParquetFileMetadata represents metadata for a Parquet file
+type PackerParquetFileMetadata struct {
+	ID              int64                  `json:"id" db:"id"`
+	TenantID        string                 `json:"tenant_id" db:"tenant_id"`
+	DatasetID       string                 `json:"dataset_id" db:"dataset_id"`
+	FilePath        string                 `json:"file_path" db:"file_path"`
+	PartitionPath   string                 `json:"partition_path" db:"partition_path"`
+	FileSizeBytes   int64                  `json:"file_size_bytes" db:"file_size_bytes"`
+	RowCount        int64                  `json:"row_count" db:"row_count"`
+	CreatedAt       time.Time              `json:"created_at" db:"created_at"`
+	LastModified    time.Time              `json:"last_modified" db:"last_modified"`
+	SchemaJSON      map[string]interface{} `json:"schema_json" db:"schema_json"`
+	ColumnStats     map[string]interface{} `json:"column_stats" db:"column_stats"`
+	FileChecksum    string                 `json:"file_checksum" db:"file_checksum"`
+	InstanceID      string                 `json:"instance_id" db:"instance_id"`
+	MetadataVersion int                    `json:"metadata_version" db:"metadata_version"`
+	TTL             time.Time              `json:"ttl" db:"ttl"`
+	InsertedAt      time.Time              `json:"inserted_at" db:"inserted_at"`
+	UpdatedAt       time.Time              `json:"updated_at" db:"updated_at"`
+}
+
+// PackerMetadataGenerationStatus tracks metadata generation for partitions
+type PackerMetadataGenerationStatus struct {
+	TenantID          string    `json:"tenant_id" db:"tenant_id"`
+	DatasetID         string    `json:"dataset_id" db:"dataset_id"`
+	PartitionPath     string    `json:"partition_path" db:"partition_path"`
+	LastGeneratedAt   time.Time `json:"last_generated_at" db:"last_generated_at"`
+	FileCount         int       `json:"file_count" db:"file_count"`
+	TotalRows         int64     `json:"total_rows" db:"total_rows"`
+	TotalSizeBytes    int64     `json:"total_size_bytes" db:"total_size_bytes"`
+	NeedsRegeneration bool      `json:"needs_regeneration" db:"needs_regeneration"`
+	CurrentSchemaHash string    `json:"current_schema_hash" db:"current_schema_hash"`
+	SchemaVersion     int       `json:"schema_version" db:"schema_version"`
+	TTL               time.Time `json:"ttl" db:"ttl"`
+}
+
+// PackerParquetMetadataSummary provides aggregated metadata information
+type PackerParquetMetadataSummary struct {
+	TenantID            string    `json:"tenant_id" db:"tenant_id"`
+	DatasetID           string    `json:"dataset_id" db:"dataset_id"`
+	PartitionPath       string    `json:"partition_path" db:"partition_path"`
+	FileCount           int       `json:"file_count" db:"file_count"`
+	TotalRows           int64     `json:"total_rows" db:"total_rows"`
+	TotalSizeBytes      int64     `json:"total_size_bytes" db:"total_size_bytes"`
+	FirstFileCreated    time.Time `json:"first_file_created" db:"first_file_created"`
+	LastFileModified    time.Time `json:"last_file_modified" db:"last_file_modified"`
+	MetadataLastUpdated time.Time `json:"metadata_last_updated" db:"metadata_last_updated"`
+}
+
 // Storage defines the interface for all database backends
 type Storage interface {
 	// Account operations
@@ -261,6 +381,58 @@ type Storage interface {
 	CreateTransformationJob(ctx context.Context, job *TransformationJob) error
 	GetTransformationJob(ctx context.Context, jobID string) (*TransformationJob, error)
 	ListTransformationJobs(ctx context.Context, tenantID, datasetID string) ([]*TransformationJob, error)
+
+	// Piper File Lock operations
+	AcquireFileLock(ctx context.Context, lock *PiperFileLock) error
+	ReleaseFileLock(ctx context.Context, tenantID, datasetID, fileKey, lockedBy string) error
+	CheckFileLock(ctx context.Context, tenantID, datasetID, fileKey string) (*PiperFileLock, error)
+	CleanupExpiredFileLocks(ctx context.Context) (int64, error)
+	CleanupStaleFileLocks(ctx context.Context, thresholdMinutes int) (int64, error)
+
+	// Piper Job Record operations
+	CreatePiperJob(ctx context.Context, job *PiperJobRecord) error
+	UpdatePiperJobStatus(ctx context.Context, jobID, status, processorID, outputFile, errorMessage string, recordsProcessed int64) error
+	GetPiperJob(ctx context.Context, jobID string) (*PiperJobRecord, error)
+	GetPiperJobsByStatus(ctx context.Context, status string) ([]*PiperJobRecord, error)
+	GetPiperJobsForTenant(ctx context.Context, tenantID string) ([]*PiperJobRecord, error)
+	CleanupOldPiperJobs(ctx context.Context, olderThanDays int) (int64, error)
+
+	// Piper Pipeline Configuration Cache operations
+	CachePipelineConfiguration(ctx context.Context, cache *PiperPipelineCache) error
+	GetCachedPipelineConfiguration(ctx context.Context, tenantID, datasetID string) (*PiperPipelineCache, error)
+	InvalidatePipelineConfiguration(ctx context.Context, tenantID, datasetID string) error
+	ListCachedPipelines(ctx context.Context) ([]*PiperPipelineCache, error)
+	CleanupExpiredPipelineCache(ctx context.Context) (int64, error)
+
+	// Piper Tenant Cache operations
+	CacheTenant(ctx context.Context, cache *PiperTenantCache) error
+	GetCachedTenants(ctx context.Context) ([]*PiperTenantCache, error)
+	InvalidateTenantCache(ctx context.Context) error
+	CleanupExpiredTenantCache(ctx context.Context) (int64, error)
+
+	// Packer Tenant Lock operations
+	AcquireTenantLock(ctx context.Context, lock *PackerTenantLock) error
+	ReleaseTenantLock(ctx context.Context, tenantID, lockedBy string) error
+	UpdateTenantLockHeartbeat(ctx context.Context, tenantID, lockedBy string) error
+	CheckTenantLock(ctx context.Context, tenantID string) (*PackerTenantLock, error)
+	CleanupExpiredTenantLocks(ctx context.Context) (int64, error)
+	ClearAllTenantLocks(ctx context.Context) (int64, error)
+	CleanupStaleTenantLocks(ctx context.Context, thresholdMinutes int) (int64, error)
+
+	// Packer Parquet Metadata operations
+	UpsertParquetFileMetadata(ctx context.Context, metadata *PackerParquetFileMetadata) error
+	GetParquetFileMetadataByPartition(ctx context.Context, tenantID, datasetID, partitionPath string) ([]*PackerParquetFileMetadata, error)
+	GetAllParquetFileMetadata(ctx context.Context, tenantID, datasetID string) ([]*PackerParquetFileMetadata, error)
+	DeleteParquetFileMetadata(ctx context.Context, tenantID, datasetID, filePath string) error
+	CleanupOrphanedParquetMetadata(ctx context.Context, tenantID, datasetID string, existingFiles []string) (int64, error)
+	CleanupExpiredParquetMetadata(ctx context.Context) (int64, int64, error)
+
+	// Packer Metadata Generation Status operations
+	UpdateMetadataGenerationStatus(ctx context.Context, status *PackerMetadataGenerationStatus) error
+	GetMetadataGenerationStatus(ctx context.Context, tenantID, datasetID, partitionPath string) (*PackerMetadataGenerationStatus, error)
+
+	// Packer Metadata Summary operations
+	GetParquetMetadataSummary(ctx context.Context, tenantID, datasetID, partitionPath string) (*PackerParquetMetadataSummary, error)
 
 	// Utility operations
 	HealthCheck(ctx context.Context) error

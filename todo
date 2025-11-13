@@ -13,7 +13,28 @@ Avoid flattery, compliments, or positive language. Be clear and concise. Do not 
 - always check for unused variables and functions and remove them
 
 
+===NEW FUNCTIONALITY TO WORK ON=====
 
+- we need to have several different types of accounts
+1. managed account is thats what we have now. this type of account uses our control plane. we provide compute and s3 storage between receiver-piper-packer. these accounts are smaller users or test accounts. 
+the only optional installation is one or several proxy services
+biggest drawback of managed account is a requirement to move data from proxy to receiver and from packer to final destination. on large sized data it will be costly. also some customers in regulated industries fedramp, etc would like to keep all data locally.
+
+
+2. self hosted accounts. these accounts are more secure, as they host their own compute and storage end to end. the only
+shared component is our control plane. this type of accounts use control plane to manipulate their installation. the proxy, receiver, piper, packer and s3 temp space are all on customer's side. data nevel leaves customers premises. this requires customer to monitor and provide compute capacity, etc.
+We should provide control service and install scripts perhaps as docker compose or something you can suggest?
+
+3. air gapped accounts or OSS. this is custom install with everything on a customer
+
+I think we should flag accounts as fully managed or on-prem with central control.
+if account is flagged as fully managed it works as is (filtering all workloads for on-prem accounts), if account is on-prem its compute should only work on its own data
+
+do you think it is doable?
+
+
+
++++++DO NOT READ BELOW+++++++++
 requirements: 
 - we need to create functionality, to create and test transformations
 - 1. i need to know what data is coming in and its schema, so i can select field names from the schema. i would pluck 10 random lines so i can see it for testing later.

@@ -1,0 +1,53 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: bytefreezer
+
+resources:
+  # Base resources
+  - base/namespace.yaml
+  - base/secrets.yaml
+  - base/configmap.yaml
+
+  # ByteFreezer components
+  - proxy/deployment.yaml
+  - proxy/service.yaml
+  - receiver/deployment.yaml
+  - receiver/service.yaml
+  - piper/deployment.yaml
+  - piper/service.yaml
+  - packer/deployment.yaml
+  - packer/service.yaml
+
+# Common labels applied to all resources
+commonLabels:
+  app.kubernetes.io/part-of: bytefreezer
+  deployment-type: on-prem
+  managed-by: kustomize
+
+# Image name prefix (update with your registry)
+images:
+  - name: bytefreezer/bytefreezer-proxy
+    newName: your-registry.com/bytefreezer/bytefreezer-proxy
+    newTag: latest
+  - name: bytefreezer/bytefreezer-receiver
+    newName: your-registry.com/bytefreezer/bytefreezer-receiver
+    newTag: latest
+  - name: bytefreezer/bytefreezer-piper
+    newName: your-registry.com/bytefreezer/bytefreezer-piper
+    newTag: latest
+  - name: bytefreezer/bytefreezer-packer
+    newName: your-registry.com/bytefreezer/bytefreezer-packer
+    newTag: latest
+
+# ConfigMap generator for additional configs
+# configMapGenerator:
+#   - name: bytefreezer-extra-config
+#     literals:
+#       - CUSTOM_VAR=value
+
+# Secret generator (base64 encode your values first)
+# secretGenerator:
+#   - name: bytefreezer-extra-secrets
+#     literals:
+#       - CUSTOM_SECRET=base64encodedvalue

@@ -1,0 +1,127 @@
+---
+# ByteFreezer Control - Centralized Variables Configuration
+# AWX/Tower Compatible - Uses survey variables where appropriate
+
+# GitHub repository
+github_repo: "n0needt0/bytefreezer-control"
+version: "{{ bytefreezer_control_version | default('latest') }}"
+
+# AWX Survey Variables (Override via job template surveys)
+force_reinstall: false
+enable_debug_logging: false
+
+# Service configuration
+service:
+  name: "bytefreezer-control"
+  user: "root"
+  group: "root"
+
+# File paths
+paths:
+  binary_dir: "/usr/local/bin"
+  binary_path: "/usr/local/bin/bytefreezer-control" 
+  config_dir: "/etc/bytefreezer-control"
+  config_path: "/etc/bytefreezer-control/config.yaml"
+  log_dir: "/var/log/bytefreezer-control"
+  data_dir: "/var/lib/bytefreezer-control"
+  service_path: "/etc/systemd/system/bytefreezer-control.service"
+  logrotate_path: "/etc/logrotate.d/bytefreezer-control" 
+
+# Log rotation settings
+logrotate:
+  rotate_count: 7
+
+# Application configuration
+config:
+  app:
+    name: "bytefreezer-control"
+    version: "1.0.0"
+  
+  logging:
+    level: "{{ 'debug' if enable_debug_logging else 'info' }}"
+    encoding: "console"
+  
+  server:
+    api_port: 8082
+
+  # Service URLs configuration (for ecosystem health checks and proxying)
+  services:
+    piper_url: "http://192.168.86.101:8090"
+    receiver_url: "http://192.168.86.103:8081"
+    packer_url: ""
+
+  # Database configuration for tenant management
+  database:
+    enabled: true
+    type: "postgresql"
+    host: "192.168.86.137"
+    port: 5432
+    database: "bytefreezer"
+    username: "bytefreezer"
+    password: "bytefreezer123"
+    ssl_mode: "disable"
+    max_connections: 25
+    max_idle_connections: 5
+
+  # S3 configuration for dataset cleanup operations
+  s3:
+    enabled: true
+    intake_bucket: "intake"
+    piper_bucket: "piper"
+    region: "us-east-1"
+    endpoint: "192.168.86.125:9000"
+    access_key: "AKIAQNXBAHUKIMJP26P6"
+    secret_key: "SECRET_KEY_AKIAQNXBAHUKIMJP26P6"
+    use_ssl: false
+
+  # OpenTelemetry configuration
+  otel:
+    enabled: true
+    service_name: "bytefreezer-control"
+    scrape_interval_seconds: 60
+    metrics_host: "0.0.0.0"
+    metrics_port: 9091
+  
+  # Housekeeping configuration
+  housekeeping:
+    enabled: true
+    interval_seconds: 300  # 5 minutes
+  
+  # Authentication and authorization
+  # Note: Auth is ALWAYS ENABLED. Admin roles (system_admin, account_admin, account_readonly) are managed in the database (control_users.role)
+  # Service health reporting uses static API key (bearer_token) defined per service
+  auth:
+    jwt_secret: "bytefreezer-control-jwt-secret-966c5b3e-597c-4b2c-96fb-86d2ffc312fe"  # Strong secret for signing JWTs
+    token_expiry_hours: 24
+    service_api_key: "bytefreezer-service-api-key-8f4a2d1b-3c5e-4f6a-9b8c-7d2e1f3a4b5c"  # System-wide API key for piper/packer/receiver
+
+  # Rate limiting
+  rate_limit:
+    enabled: false  # Disabled for easier browser testing
+    requests_per_minute: 100
+    burst_size: 20
+
+  # Health reporting configuration
+  health_reporting:
+    enabled: true  # Enable health reporting (self-registration)
+    control_url: "http://localhost:8082"
+    report_interval: 30  # How often to register itself (seconds)
+    timeout_seconds: 10  # HTTP timeout for health operations
+    register_on_startup: true  # Register service instance on startup
+
+  # Development mode
+  dev: true  # Enable dev mode for browser testing
+
+# Download configuration for install.yml
+download:
+  url: "https://github.com/{{ github_repo }}/releases/{{ 'latest/download' if version == 'latest' else 'download/' + version }}/bytefreezer-control-linux-amd64.tar.gz"
+
+# Docker image configuration for docker_install.yml
+docker:
+  image_name: "ghcr.io/n0needt0/bytefreezer-control"
+  tag: "{{ bytefreezer_control_version | default('latest') }}"
+  force_pull: false  # Set to true to always pull latest image
+
+# Remove configuration
+remove:
+  data_dir: "{{ bytefreezer_control_remove_data_dir | default(false) }}"

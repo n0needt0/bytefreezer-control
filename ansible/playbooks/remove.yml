@@ -2,10 +2,12 @@
 # AWX Job Template: ByteFreezer Control - Remove Service
 # Description: Remove ByteFreezer Control service and optionally data
 # Survey Variables: remove_data_dir
-- name: Remove ByteFreezer Control service
+- name: Remove ByteFreezer Control service (Managed)
   hosts: all
   become: yes
   gather_facts: yes
+  vars_files:
+    - vars/managed.yml
 
   pre_tasks:
     - name: Check if service exists

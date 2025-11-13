@@ -2,10 +2,12 @@
 # AWX Job Template: ByteFreezer Control - Local Install
 # Description: Install ByteFreezer Control service from local binary
 # Survey Variables: force_reinstall, enable_debug_logging
-- name: Install and configure ByteFreezer Control service
+- name: Install and configure ByteFreezer Control service (Managed)
   hosts: all
   become: yes
   gather_facts: yes
+  vars_files:
+    - vars/managed.yml
 
   pre_tasks:
     - name: Check if service already exists

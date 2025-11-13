@@ -484,8 +484,9 @@ func (api *API) checkServiceHealth(url string) bool {
 // CreateAccount creates a new account
 func (api *API) CreateAccount() usecase.Interactor {
 	type createAccountInput struct {
-		Name  string `json:"name" required:"true"`
-		Email string `json:"email" required:"true"`
+		Name           string `json:"name" required:"true"`
+		Email          string `json:"email" required:"true"`
+		DeploymentType string `json:"deployment_type"` // managed, on_prem, air_gapped (defaults to managed)
 	}
 
 	type createAccountOutput struct {
@@ -501,10 +502,20 @@ func (api *API) CreateAccount() usecase.Interactor {
 			return fmt.Errorf("storage not initialized")
 		}
 
+		// Validate deployment type if provided
+		if input.DeploymentType != "" {
+			if input.DeploymentType != storage.DeploymentTypeManaged &&
+				input.DeploymentType != storage.DeploymentTypeOnPrem &&
+				input.DeploymentType != storage.DeploymentTypeAirGapped {
+				return fmt.Errorf("invalid deployment_type: must be one of: managed, on_prem, air_gapped")
+			}
+		}
+
 		account := &storage.Account{
-			Name:   input.Name,
-			Email:  input.Email,
-			Active: true,
+			Name:           input.Name,
+			Email:          input.Email,
+			Active:         true,
+			DeploymentType: input.DeploymentType, // Will default to 'managed' in CreateAccount if empty
 		}
 
 		if err := api.Services.Storage.CreateAccount(ctx, account); err != nil {
@@ -521,8 +532,9 @@ func (api *API) CreateAccount() usecase.Interactor {
 
 		// Log audit event
 		api.logAuditEvent(ctx, account.ID, "account_created", "account", account.ID, map[string]interface{}{
-			"account_name": account.Name,
-			"email":        account.Email,
+			"account_name":      account.Name,
+			"email":             account.Email,
+			"deployment_type":   account.DeploymentType,
 			"api_key_generated": apiKey != "",
 		})
 
@@ -613,10 +625,11 @@ func (api *API) ListAccounts() usecase.Interactor {
 // UpdateAccount updates an existing account
 func (api *API) UpdateAccount() usecase.Interactor {
 	type updateAccountInput struct {
-		AccountID string `path:"accountId" required:"true"`
-		Name      string `json:"name"`
-		Email     string `json:"email"`
-		Active    *bool  `json:"active"`
+		AccountID      string `path:"accountId" required:"true"`
+		Name           string `json:"name"`
+		Email          string `json:"email"`
+		Active         *bool  `json:"active"`
+		DeploymentType string `json:"deployment_type"` // managed, on_prem, air_gapped
 	}
 
 	u := usecase.NewInteractor(func(ctx context.Context, input updateAccountInput, output *storage.Account) error {
@@ -652,6 +665,17 @@ func (api *API) UpdateAccount() usecase.Interactor {
 			oldValues["active"] = account.Active
 			changes["active"] = *input.Active
 			account.Active = *input.Active
+		}
+		if input.DeploymentType != "" && input.DeploymentType != account.DeploymentType {
+			// Validate deployment type
+			if input.DeploymentType != storage.DeploymentTypeManaged &&
+				input.DeploymentType != storage.DeploymentTypeOnPrem &&
+				input.DeploymentType != storage.DeploymentTypeAirGapped {
+				return fmt.Errorf("invalid deployment_type: must be one of: managed, on_prem, air_gapped")
+			}
+			oldValues["deployment_type"] = account.DeploymentType
+			changes["deployment_type"] = input.DeploymentType
+			account.DeploymentType = input.DeploymentType
 		}
 
 		if err := api.Services.Storage.UpdateAccount(ctx, account); err != nil {

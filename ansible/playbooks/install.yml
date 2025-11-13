@@ -2,10 +2,12 @@
 # AWX Job Template: ByteFreezer Control - GitHub Release Install
 # Description: Install ByteFreezer Control service from GitHub release
 # Survey Variables: force_reinstall, enable_debug_logging, bytefreezer_control_version
-- name: Install and configure ByteFreezer Control service
+- name: Install and configure ByteFreezer Control service (Managed)
   hosts: all
   become: yes
   gather_facts: yes
+  vars_files:
+    - vars/managed.yml
 
   pre_tasks:
     - name: Check if service already exists

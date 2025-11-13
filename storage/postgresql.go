@@ -65,6 +65,11 @@ func (p *PostgreSQLStorage) CreateAccount(ctx context.Context, account *Account)
 		account.ID = GenerateShortID()
 	}
 
+	// Set default deployment type if empty
+	if account.DeploymentType == "" {
+		account.DeploymentType = DeploymentTypeManaged
+	}
+
 	// Set default config if empty
 	if isEmptyAccountConfig(account.Config) {
 		account.Config = GetDefaultAccountConfig()
@@ -80,11 +85,11 @@ func (p *PostgreSQLStorage) CreateAccount(ctx context.Context, account *Account)
 	}
 
 	query := `
-		INSERT INTO control_accounts (id, name, email, active, created_at, updated_at, config)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`
+		INSERT INTO control_accounts (id, name, email, active, deployment_type, created_at, updated_at, config)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 
 	_, err = p.db.ExecContext(ctx, query,
-		account.ID, account.Name, account.Email, account.Active,
+		account.ID, account.Name, account.Email, account.Active, account.DeploymentType,
 		account.CreatedAt, account.UpdatedAt, configJSON)
 
 	if err != nil {
@@ -99,14 +104,14 @@ func (p *PostgreSQLStorage) CreateAccount(ctx context.Context, account *Account)
 
 func (p *PostgreSQLStorage) GetAccount(ctx context.Context, id string) (*Account, error) {
 	query := `
-		SELECT id, name, email, active, created_at, updated_at, config
+		SELECT id, name, email, active, deployment_type, created_at, updated_at, config
 		FROM control_accounts WHERE id = $1`
 
 	var account Account
 	var configJSON []byte
 
 	err := p.db.QueryRowContext(ctx, query, id).Scan(
-		&account.ID, &account.Name, &account.Email, &account.Active,
+		&account.ID, &account.Name, &account.Email, &account.Active, &account.DeploymentType,
 		&account.CreatedAt, &account.UpdatedAt, &configJSON)
 
 	if err == sql.ErrNoRows {
@@ -125,14 +130,14 @@ func (p *PostgreSQLStorage) GetAccount(ctx context.Context, id string) (*Account
 
 func (p *PostgreSQLStorage) GetAccountByEmail(ctx context.Context, email string) (*Account, error) {
 	query := `
-		SELECT id, name, email, active, created_at, updated_at, config
+		SELECT id, name, email, active, deployment_type, created_at, updated_at, config
 		FROM control_accounts WHERE email = $1`
 
 	var account Account
 	var configJSON []byte
 
 	err := p.db.QueryRowContext(ctx, query, email).Scan(
-		&account.ID, &account.Name, &account.Email, &account.Active,
+		&account.ID, &account.Name, &account.Email, &account.Active, &account.DeploymentType,
 		&account.CreatedAt, &account.UpdatedAt, &configJSON)
 
 	if err == sql.ErrNoRows {
@@ -159,11 +164,11 @@ func (p *PostgreSQLStorage) UpdateAccount(ctx context.Context, account *Account)
 
 	query := `
 		UPDATE control_accounts
-		SET name = $1, email = $2, active = $3, updated_at = $4, config = $5
-		WHERE id = $6`
+		SET name = $1, email = $2, active = $3, deployment_type = $4, updated_at = $5, config = $6
+		WHERE id = $7`
 
 	result, err := p.db.ExecContext(ctx, query,
-		account.Name, account.Email, account.Active,
+		account.Name, account.Email, account.Active, account.DeploymentType,
 		account.UpdatedAt, configJSON, account.ID)
 
 	if err != nil {
@@ -208,7 +213,7 @@ func (p *PostgreSQLStorage) ListAccounts(ctx context.Context, opts ListOptions) 
 	}
 
 	query := `
-		SELECT id, name, email, active, created_at, updated_at, config
+		SELECT id, name, email, active, deployment_type, created_at, updated_at, config
 		FROM control_accounts
 		ORDER BY created_at DESC
 		LIMIT $1`
@@ -225,7 +230,7 @@ func (p *PostgreSQLStorage) ListAccounts(ctx context.Context, opts ListOptions) 
 		var configJSON []byte
 
 		err := rows.Scan(
-			&account.ID, &account.Name, &account.Email, &account.Active,
+			&account.ID, &account.Name, &account.Email, &account.Active, &account.DeploymentType,
 			&account.CreatedAt, &account.UpdatedAt, &configJSON)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan account: %w", err)

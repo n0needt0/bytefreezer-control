@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: bytefreezer-proxy
+  namespace: bytefreezer
+  labels:
+    app.kubernetes.io/name: bytefreezer-proxy
+    app.kubernetes.io/component: data-collection
+spec:
+  type: LoadBalancer  # Or NodePort depending on your cluster
+  ports:
+  - name: udp
+    port: 5140
+    targetPort: udp
+    protocol: UDP
+  - name: metrics
+    port: 9090
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    app.kubernetes.io/name: bytefreezer-proxy
+  sessionAffinity: ClientIP  # Sticky sessions for UDP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600

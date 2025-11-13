@@ -201,6 +201,66 @@ func (api *API) NewRouter() *web.Service {
 	// Proxy configuration polling endpoint (returns tenants + datasets for account)
 	service.Get("/api/v1/proxy/config", api.GetProxyConfiguration())
 
+	// ====================================================================================
+	// PIPER API ENDPOINTS (for piper service state management via control API)
+	// ====================================================================================
+
+	// Piper File Lock operations
+	service.Post("/api/v1/piper/locks/files", api.AcquireFileLock())
+	service.Delete("/api/v1/piper/locks/files", api.ReleaseFileLock())
+	service.Get("/api/v1/piper/locks/files/{tenant_id}/{dataset_id}/{file_key}", api.CheckFileLock())
+	service.Delete("/api/v1/piper/locks/files/cleanup/expired", api.CleanupExpiredFileLocks())
+	service.Delete("/api/v1/piper/locks/files/cleanup/stale", api.CleanupStaleFileLocks())
+
+	// Piper Job Record operations
+	service.Post("/api/v1/piper/jobs", api.CreatePiperJob())
+	service.Put("/api/v1/piper/jobs/{job_id}/status", api.UpdatePiperJobStatus())
+	service.Get("/api/v1/piper/jobs/{job_id}", api.GetPiperJob())
+	service.Get("/api/v1/piper/jobs", api.ListPiperJobsByStatus())
+	service.Get("/api/v1/piper/jobs/tenant/{tenant_id}", api.ListPiperJobsForTenant())
+	service.Delete("/api/v1/piper/jobs/cleanup/old", api.CleanupOldPiperJobs())
+
+	// Piper Pipeline Configuration Cache operations
+	service.Post("/api/v1/piper/cache/pipelines", api.CachePipelineConfiguration())
+	service.Get("/api/v1/piper/cache/pipelines/{tenant_id}/{dataset_id}", api.GetCachedPipelineConfiguration())
+	service.Delete("/api/v1/piper/cache/pipelines/{tenant_id}/{dataset_id}", api.InvalidatePipelineConfiguration())
+	service.Get("/api/v1/piper/cache/pipelines", api.ListCachedPipelines())
+	service.Delete("/api/v1/piper/cache/pipelines/cleanup/expired", api.CleanupExpiredPipelineCache())
+
+	// Piper Tenant Cache operations
+	service.Post("/api/v1/piper/cache/tenants", api.CacheTenant())
+	service.Get("/api/v1/piper/cache/tenants", api.GetCachedTenants())
+	service.Delete("/api/v1/piper/cache/tenants", api.InvalidateTenantCache())
+	service.Delete("/api/v1/piper/cache/tenants/cleanup/expired", api.CleanupExpiredTenantCache())
+
+	// ====================================================================================
+	// PACKER API ENDPOINTS (for packer service state management via control API)
+	// ====================================================================================
+
+	// Packer Tenant Lock operations
+	service.Post("/api/v1/packer/locks/tenants", api.AcquireTenantLock())
+	service.Delete("/api/v1/packer/locks/tenants/{tenant_id}", api.ReleaseTenantLock())
+	service.Put("/api/v1/packer/locks/tenants/{tenant_id}/heartbeat", api.UpdateTenantLockHeartbeat())
+	service.Get("/api/v1/packer/locks/tenants/{tenant_id}", api.CheckTenantLock())
+	service.Delete("/api/v1/packer/locks/tenants/cleanup/expired", api.CleanupExpiredTenantLocks())
+	service.Delete("/api/v1/packer/locks/tenants/cleanup/all", api.ClearAllTenantLocks())
+	service.Delete("/api/v1/packer/locks/tenants/cleanup/stale", api.CleanupStaleTenantLocks())
+
+	// Packer Parquet Metadata operations
+	service.Post("/api/v1/packer/metadata/files", api.UpsertParquetFileMetadata())
+	service.Get("/api/v1/packer/metadata/files/{tenant_id}/{dataset_id}", api.GetParquetFileMetadataByPartition())
+	service.Get("/api/v1/packer/metadata/files/{tenant_id}/{dataset_id}/all", api.GetAllParquetFileMetadata())
+	service.Delete("/api/v1/packer/metadata/files/{tenant_id}/{dataset_id}", api.DeleteParquetFileMetadata())
+	service.Post("/api/v1/packer/metadata/files/cleanup/orphaned", api.CleanupOrphanedParquetMetadata())
+	service.Delete("/api/v1/packer/metadata/files/cleanup/expired", api.CleanupExpiredParquetMetadata())
+
+	// Packer Metadata Generation Status operations
+	service.Post("/api/v1/packer/metadata/generation/status", api.UpdateMetadataGenerationStatus())
+	service.Get("/api/v1/packer/metadata/generation/status/{tenant_id}/{dataset_id}/{partition_path}", api.GetMetadataGenerationStatus())
+
+	// Packer Metadata Summary operations
+	service.Get("/api/v1/packer/metadata/summary/{tenant_id}/{dataset_id}/{partition_path}", api.GetParquetMetadataSummary())
+
 	// API documentation
 	service.Docs("/v1/docs", swgui.New)
 

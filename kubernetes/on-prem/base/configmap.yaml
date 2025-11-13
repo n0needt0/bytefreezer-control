@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bytefreezer-common-config
+  namespace: bytefreezer
+data:
+  # Control plane configuration (external)
+  CONTROL_SERVICE_URL: "https://control.bytefreezer.com"  # Replace with your control plane URL
+  CONTROL_SERVICE_PORT: "443"
+
+  # S3/MinIO configuration
+  S3_ENDPOINT: "minio.bytefreezer.svc.cluster.local:9000"  # Internal MinIO service
+  S3_REGION: "us-east-1"
+  S3_SSL: "false"
+  S3_INTAKE_BUCKET: "intake"
+  S3_PIPER_BUCKET: "piper"
+  S3_GEOIP_BUCKET: "geoip"
+
+  # PostgreSQL configuration
+  POSTGRES_HOST: "postgres.bytefreezer.svc.cluster.local"  # Internal PostgreSQL service
+  POSTGRES_PORT: "5432"
+  POSTGRES_DATABASE: "bytefreezer"
+  POSTGRES_SSL_MODE: "disable"
+
+  # Common application settings
+  LOG_LEVEL: "info"
+  ENABLE_METRICS: "true"
+  METRICS_PORT: "9090"

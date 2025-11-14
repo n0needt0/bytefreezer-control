@@ -207,7 +207,8 @@ func (api *API) NewRouter() *web.Service {
 
 	// Piper File Lock operations
 	service.Post("/api/v1/piper/locks/files", api.AcquireFileLock())
-	service.Delete("/api/v1/piper/locks/files", api.ReleaseFileLock())
+	service.Post("/api/v1/piper/locks/files/release", api.ReleaseFileLock())
+	service.Delete("/api/v1/piper/locks/files", api.ReleaseFileLock()) // Legacy endpoint
 	service.Get("/api/v1/piper/locks/files/{tenant_id}/{dataset_id}/{file_key}", api.CheckFileLock())
 	service.Delete("/api/v1/piper/locks/files/cleanup/expired", api.CleanupExpiredFileLocks())
 	service.Delete("/api/v1/piper/locks/files/cleanup/stale", api.CleanupStaleFileLocks())

@@ -184,12 +184,13 @@ func (s *PostgreSQLStorage) CreatePiperJob(ctx context.Context, job *PiperJobRec
 
 // UpdatePiperJobStatus updates a piper job's status
 func (s *PostgreSQLStorage) UpdatePiperJobStatus(ctx context.Context, jobID, status, processorID, outputFile, errorMessage string, recordsProcessed int64) error {
+	// NOTE: processor_id is NOT updated here - it's set during job creation and should not change
 	query := `UPDATE piper_job_records
-		SET status = $1, processor_id = $2, output_file = $3, error_message = $4,
-		    records_processed = $5, updated_at = NOW()
-		WHERE job_id = $6`
+		SET status = $1, output_file = $2, error_message = $3,
+		    records_processed = $4, updated_at = NOW()
+		WHERE job_id = $5`
 
-	result, err := s.db.ExecContext(ctx, query, status, processorID, outputFile, errorMessage, recordsProcessed, jobID)
+	result, err := s.db.ExecContext(ctx, query, status, outputFile, errorMessage, recordsProcessed, jobID)
 	if err != nil {
 		return fmt.Errorf("failed to update piper job status: %w", err)
 	}

@@ -233,6 +233,14 @@ func (api *API) NewRouter() *web.Service {
 	service.Delete("/api/v1/piper/cache/tenants", api.InvalidateTenantCache())
 	service.Delete("/api/v1/piper/cache/tenants/cleanup/expired", api.CleanupExpiredTenantCache())
 
+	// Piper Transformation Job operations
+	service.Post("/api/v1/piper/transformation-jobs", api.CreatePiperTransformationJob())
+	service.Post("/api/v1/piper/transformation-jobs/claim", api.ClaimPiperTransformationJob())
+	service.Put("/api/v1/piper/transformation-jobs/{job_id}", api.UpdatePiperTransformationJob())
+	service.Get("/api/v1/piper/transformation-jobs/{job_id}", api.GetPiperTransformationJob())
+	service.Get("/api/v1/piper/transformation-jobs/pending", api.ListPendingPiperTransformationJobs())
+	service.Delete("/api/v1/piper/transformation-jobs/cleanup/expired", api.CleanupExpiredPiperTransformationJobs())
+
 	// ====================================================================================
 	// PACKER API ENDPOINTS (for packer service state management via control API)
 	// ====================================================================================

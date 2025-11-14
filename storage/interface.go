@@ -434,6 +434,14 @@ type Storage interface {
 	// Packer Metadata Summary operations
 	GetParquetMetadataSummary(ctx context.Context, tenantID, datasetID, partitionPath string) (*PackerParquetMetadataSummary, error)
 
+	// Piper Transformation Job operations
+	CreatePiperTransformationJob(ctx context.Context, job *PiperTransformationJob) error
+	ClaimPiperTransformationJob(ctx context.Context, processorID string, jobTypes []PiperTransformationJobType) (*PiperTransformationJob, error)
+	UpdatePiperTransformationJob(ctx context.Context, job *PiperTransformationJob) error
+	GetPiperTransformationJob(ctx context.Context, jobID string) (*PiperTransformationJob, error)
+	ListPendingPiperTransformationJobs(ctx context.Context, limit int) ([]*PiperTransformationJob, error)
+	CleanupExpiredPiperTransformationJobs(ctx context.Context) (int, error)
+
 	// Utility operations
 	HealthCheck(ctx context.Context) error
 	Migrate(ctx context.Context) error

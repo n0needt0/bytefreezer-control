@@ -533,3 +533,323 @@ func (s *PostgreSQLStorage) GetParquetMetadataSummary(ctx context.Context, tenan
 
 	return summary, nil
 }
+
+// ============================================================================
+// PIPER TRANSFORMATION JOB OPERATIONS
+// ============================================================================
+
+// CreatePiperTransformationJob creates a new transformation job
+func (s *PostgreSQLStorage) CreatePiperTransformationJob(ctx context.Context, job *PiperTransformationJob) error {
+	query := `INSERT INTO piper_transformation_jobs
+		(job_id, tenant_id, dataset_id, job_type, status, processor_id, request, result,
+		error_message, created_at, updated_at, started_at, completed_at, ttl)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
+
+	requestJSON, err := sonic.Marshal(job.Request)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	resultJSON, err := sonic.Marshal(job.Result)
+	if err != nil {
+		return fmt.Errorf("failed to marshal result: %w", err)
+	}
+
+	_, err = s.db.ExecContext(ctx, query,
+		job.JobID, job.TenantID, job.DatasetID, job.JobType, job.Status,
+		job.ProcessorID, requestJSON, resultJSON, job.ErrorMsg,
+		job.CreatedAt, job.UpdatedAt, job.StartedAt, job.CompletedAt, job.TTL)
+
+	if err != nil {
+		return fmt.Errorf("failed to create transformation job: %w", err)
+	}
+
+	log.Infof("Created transformation job %s for %s/%s (type: %s)", job.JobID, job.TenantID, job.DatasetID, job.JobType)
+	return nil
+}
+
+// ClaimPiperTransformationJob claims a pending transformation job
+func (s *PostgreSQLStorage) ClaimPiperTransformationJob(ctx context.Context, processorID string, jobTypes []PiperTransformationJobType) (*PiperTransformationJob, error) {
+	// Clean up expired jobs first
+	_, err := s.CleanupExpiredPiperTransformationJobs(ctx)
+	if err != nil {
+		log.Warnf("Failed to cleanup expired transformation jobs: %v", err)
+	}
+
+	// Convert job types to strings for query
+	jobTypeStrings := make([]string, len(jobTypes))
+	for i, jt := range jobTypes {
+		jobTypeStrings[i] = string(jt)
+	}
+
+	// Use a transaction to atomically claim the job
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Find oldest pending job matching the job types
+	query := `SELECT job_id, tenant_id, dataset_id, job_type, status, processor_id, request, result,
+		error_message, created_at, updated_at, started_at, completed_at, ttl
+		FROM piper_transformation_jobs
+		WHERE status = 'pending' AND job_type = ANY($1) AND ttl > NOW()
+		ORDER BY created_at ASC
+		LIMIT 1
+		FOR UPDATE SKIP LOCKED`
+
+	job := &PiperTransformationJob{}
+	var requestJSON, resultJSON []byte
+	var processorIDNullable sql.NullString
+	var errorMsgNullable sql.NullString
+	var startedAtNullable sql.NullTime
+	var completedAtNullable sql.NullTime
+
+	err = tx.QueryRowContext(ctx, query, jobTypeStrings).Scan(
+		&job.JobID, &job.TenantID, &job.DatasetID, &job.JobType, &job.Status,
+		&processorIDNullable, &requestJSON, &resultJSON, &errorMsgNullable,
+		&job.CreatedAt, &job.UpdatedAt, &startedAtNullable, &completedAtNullable, &job.TTL)
+
+	if err == sql.ErrNoRows {
+		// No jobs available
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to find pending job: %w", err)
+	}
+
+	// Unmarshal JSON fields
+	if len(requestJSON) > 0 && string(requestJSON) != "null" {
+		if err := sonic.Unmarshal(requestJSON, &job.Request); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal request: %w", err)
+		}
+	}
+	if len(resultJSON) > 0 && string(resultJSON) != "null" {
+		if err := sonic.Unmarshal(resultJSON, &job.Result); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal result: %w", err)
+		}
+	}
+
+	if processorIDNullable.Valid {
+		job.ProcessorID = processorIDNullable.String
+	}
+	if errorMsgNullable.Valid {
+		job.ErrorMsg = errorMsgNullable.String
+	}
+	if startedAtNullable.Valid {
+		job.StartedAt = &startedAtNullable.Time
+	}
+	if completedAtNullable.Valid {
+		job.CompletedAt = &completedAtNullable.Time
+	}
+
+	// Update the job to running status
+	now := time.Now()
+	updateQuery := `UPDATE piper_transformation_jobs
+		SET status = 'running', processor_id = $1, started_at = $2, updated_at = $3
+		WHERE job_id = $4`
+
+	_, err = tx.ExecContext(ctx, updateQuery, processorID, now, now, job.JobID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to claim job: %w", err)
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	// Update the job object
+	job.Status = PiperJobStatusRunning
+	job.ProcessorID = processorID
+	job.StartedAt = &now
+	job.UpdatedAt = now
+
+	log.Infof("Claimed transformation job %s by processor %s (type: %s)", job.JobID, processorID, job.JobType)
+	return job, nil
+}
+
+// UpdatePiperTransformationJob updates an existing transformation job
+func (s *PostgreSQLStorage) UpdatePiperTransformationJob(ctx context.Context, job *PiperTransformationJob) error {
+	requestJSON, err := sonic.Marshal(job.Request)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	resultJSON, err := sonic.Marshal(job.Result)
+	if err != nil {
+		return fmt.Errorf("failed to marshal result: %w", err)
+	}
+
+	query := `UPDATE piper_transformation_jobs
+		SET status = $1, processor_id = $2, request = $3, result = $4,
+		error_message = $5, updated_at = $6, started_at = $7, completed_at = $8
+		WHERE job_id = $9`
+
+	result, err := s.db.ExecContext(ctx, query,
+		job.Status, job.ProcessorID, requestJSON, resultJSON,
+		job.ErrorMsg, job.UpdatedAt, job.StartedAt, job.CompletedAt, job.JobID)
+
+	if err != nil {
+		return fmt.Errorf("failed to update transformation job: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("transformation job %s not found", job.JobID)
+	}
+
+	log.Debugf("Updated transformation job %s to status %s", job.JobID, job.Status)
+	return nil
+}
+
+// GetPiperTransformationJob retrieves a transformation job by ID
+func (s *PostgreSQLStorage) GetPiperTransformationJob(ctx context.Context, jobID string) (*PiperTransformationJob, error) {
+	query := `SELECT job_id, tenant_id, dataset_id, job_type, status, processor_id, request, result,
+		error_message, created_at, updated_at, started_at, completed_at, ttl
+		FROM piper_transformation_jobs
+		WHERE job_id = $1`
+
+	job := &PiperTransformationJob{}
+	var requestJSON, resultJSON []byte
+	var processorIDNullable sql.NullString
+	var errorMsgNullable sql.NullString
+	var startedAtNullable sql.NullTime
+	var completedAtNullable sql.NullTime
+
+	err := s.db.QueryRowContext(ctx, query, jobID).Scan(
+		&job.JobID, &job.TenantID, &job.DatasetID, &job.JobType, &job.Status,
+		&processorIDNullable, &requestJSON, &resultJSON, &errorMsgNullable,
+		&job.CreatedAt, &job.UpdatedAt, &startedAtNullable, &completedAtNullable, &job.TTL)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("transformation job %s not found", jobID)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get transformation job: %w", err)
+	}
+
+	// Unmarshal JSON fields
+	if len(requestJSON) > 0 && string(requestJSON) != "null" {
+		if err := sonic.Unmarshal(requestJSON, &job.Request); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal request: %w", err)
+		}
+	}
+	if len(resultJSON) > 0 && string(resultJSON) != "null" {
+		if err := sonic.Unmarshal(resultJSON, &job.Result); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal result: %w", err)
+		}
+	}
+
+	if processorIDNullable.Valid {
+		job.ProcessorID = processorIDNullable.String
+	}
+	if errorMsgNullable.Valid {
+		job.ErrorMsg = errorMsgNullable.String
+	}
+	if startedAtNullable.Valid {
+		job.StartedAt = &startedAtNullable.Time
+	}
+	if completedAtNullable.Valid {
+		job.CompletedAt = &completedAtNullable.Time
+	}
+
+	return job, nil
+}
+
+// ListPendingPiperTransformationJobs lists pending transformation jobs
+func (s *PostgreSQLStorage) ListPendingPiperTransformationJobs(ctx context.Context, limit int) ([]*PiperTransformationJob, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+
+	query := `SELECT job_id, tenant_id, dataset_id, job_type, status, processor_id, request, result,
+		error_message, created_at, updated_at, started_at, completed_at, ttl
+		FROM piper_transformation_jobs
+		WHERE status = 'pending' AND ttl > NOW()
+		ORDER BY created_at ASC
+		LIMIT $1`
+
+	rows, err := s.db.QueryContext(ctx, query, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pending transformation jobs: %w", err)
+	}
+	defer rows.Close()
+
+	jobs := []*PiperTransformationJob{}
+	for rows.Next() {
+		job := &PiperTransformationJob{}
+		var requestJSON, resultJSON []byte
+		var processorIDNullable sql.NullString
+		var errorMsgNullable sql.NullString
+		var startedAtNullable sql.NullTime
+		var completedAtNullable sql.NullTime
+
+		err := rows.Scan(
+			&job.JobID, &job.TenantID, &job.DatasetID, &job.JobType, &job.Status,
+			&processorIDNullable, &requestJSON, &resultJSON, &errorMsgNullable,
+			&job.CreatedAt, &job.UpdatedAt, &startedAtNullable, &completedAtNullable, &job.TTL)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan transformation job: %w", err)
+		}
+
+		// Unmarshal JSON fields
+		if len(requestJSON) > 0 && string(requestJSON) != "null" {
+			if err := sonic.Unmarshal(requestJSON, &job.Request); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal request: %w", err)
+			}
+		}
+		if len(resultJSON) > 0 && string(resultJSON) != "null" {
+			if err := sonic.Unmarshal(resultJSON, &job.Result); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal result: %w", err)
+			}
+		}
+
+		if processorIDNullable.Valid {
+			job.ProcessorID = processorIDNullable.String
+		}
+		if errorMsgNullable.Valid {
+			job.ErrorMsg = errorMsgNullable.String
+		}
+		if startedAtNullable.Valid {
+			job.StartedAt = &startedAtNullable.Time
+		}
+		if completedAtNullable.Valid {
+			job.CompletedAt = &completedAtNullable.Time
+		}
+
+		jobs = append(jobs, job)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating transformation jobs: %w", err)
+	}
+
+	return jobs, nil
+}
+
+// CleanupExpiredPiperTransformationJobs removes expired transformation jobs
+func (s *PostgreSQLStorage) CleanupExpiredPiperTransformationJobs(ctx context.Context) (int, error) {
+	query := `DELETE FROM piper_transformation_jobs WHERE ttl < NOW()`
+
+	result, err := s.db.ExecContext(ctx, query)
+	if err != nil {
+		return 0, fmt.Errorf("failed to cleanup expired transformation jobs: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected > 0 {
+		log.Infof("Cleaned up %d expired transformation jobs", rowsAffected)
+	}
+
+	return int(rowsAffected), nil
+}

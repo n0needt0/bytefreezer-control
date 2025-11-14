@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/lib/pq"
 	"github.com/n0needt0/go-goodies/log"
 )
 
@@ -605,7 +606,7 @@ func (s *PostgreSQLStorage) ClaimPiperTransformationJob(ctx context.Context, pro
 	var startedAtNullable sql.NullTime
 	var completedAtNullable sql.NullTime
 
-	err = tx.QueryRowContext(ctx, query, jobTypeStrings).Scan(
+	err = tx.QueryRowContext(ctx, query, pq.Array(jobTypeStrings)).Scan(
 		&job.JobID, &job.TenantID, &job.DatasetID, &job.JobType, &job.Status,
 		&processorIDNullable, &requestJSON, &resultJSON, &errorMsgNullable,
 		&job.CreatedAt, &job.UpdatedAt, &startedAtNullable, &completedAtNullable, &job.TTL)

@@ -178,6 +178,33 @@ func (api *API) CleanupStaleFileLocks() usecase.Interactor {
 	return u
 }
 
+// CleanupInstanceFileLocks removes all locks held by a specific instance
+func (api *API) CleanupInstanceFileLocks() usecase.Interactor {
+	type cleanupInstanceFileLocksInput struct {
+		InstanceID string `json:"instance_id" required:"true"`
+	}
+
+	type cleanupInstanceFileLocksOutput struct {
+		DeletedCount int64 `json:"deleted_count"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input cleanupInstanceFileLocksInput, output *cleanupInstanceFileLocksOutput) error {
+		count, err := api.Services.Storage.CleanupInstanceFileLocks(ctx, input.InstanceID)
+		if err != nil {
+			return usecaseStatus.Wrap(fmt.Errorf("failed to cleanup instance file locks: %w", err), usecaseStatus.Internal)
+		}
+
+		output.DeletedCount = count
+		return nil
+	})
+
+	u.SetTitle("Cleanup Instance File Locks")
+	u.SetDescription("Removes all file locks held by a specific instance")
+	u.SetTags("piper", "locks", "cleanup")
+
+	return u
+}
+
 // ============================================================================
 // PIPER JOB RECORD HANDLERS
 // ============================================================================

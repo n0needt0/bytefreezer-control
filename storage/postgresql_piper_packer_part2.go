@@ -201,6 +201,27 @@ func (s *PostgreSQLStorage) CleanupStaleTenantLocks(ctx context.Context, thresho
 	return rowsAffected, nil
 }
 
+// CleanupInstanceTenantLocks removes all locks held by a specific instance
+func (s *PostgreSQLStorage) CleanupInstanceTenantLocks(ctx context.Context, instanceID string) (int64, error) {
+	query := `DELETE FROM packer_tenant_locks WHERE locked_by = $1`
+
+	result, err := s.db.ExecContext(ctx, query, instanceID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to cleanup instance tenant locks: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected > 0 {
+		log.Infof("Cleaned up %d abandoned locks from instance %s", rowsAffected, instanceID)
+	}
+
+	return rowsAffected, nil
+}
+
 // ============================================================================
 // PACKER PARQUET METADATA OPERATIONS
 // ============================================================================

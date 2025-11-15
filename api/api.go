@@ -212,6 +212,7 @@ func (api *API) NewRouter() *web.Service {
 	service.Get("/api/v1/piper/locks/files/{tenant_id}/{dataset_id}/{file_key}", api.CheckFileLock())
 	service.Delete("/api/v1/piper/locks/files/cleanup/expired", api.CleanupExpiredFileLocks())
 	service.Delete("/api/v1/piper/locks/files/cleanup/stale", api.CleanupStaleFileLocks())
+	service.Delete("/api/v1/piper/locks/files/cleanup/instance", api.CleanupInstanceFileLocks())
 
 	// Piper Job Record operations
 	service.Post("/api/v1/piper/jobs", api.CreatePiperJob())
@@ -254,6 +255,7 @@ func (api *API) NewRouter() *web.Service {
 	service.Delete("/api/v1/packer/locks/tenants/cleanup/expired", api.CleanupExpiredTenantLocks())
 	service.Delete("/api/v1/packer/locks/tenants/cleanup/all", api.ClearAllTenantLocks())
 	service.Delete("/api/v1/packer/locks/tenants/cleanup/stale", api.CleanupStaleTenantLocks())
+	service.Delete("/api/v1/packer/locks/tenants/cleanup/instance", api.CleanupInstanceTenantLocks())
 
 	// Packer Parquet Metadata operations
 	service.Post("/api/v1/packer/metadata/files", api.UpsertParquetFileMetadata())

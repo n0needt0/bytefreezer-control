@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/n0needt0/bytefreezer-control/storage"
@@ -63,7 +64,13 @@ func (api *API) ReleaseTenantLock() usecase.Interactor {
 	}
 
 	u := usecase.NewInteractor(func(ctx context.Context, input releaseTenantLockInput, output *releaseTenantLockOutput) error {
-		err := api.Services.Storage.ReleaseTenantLock(ctx, input.TenantID, input.LockedBy)
+		// URL-decode tenant_id since it may contain slashes
+		tenantID, err := url.QueryUnescape(input.TenantID)
+		if err != nil {
+			tenantID = input.TenantID // Use as-is if decode fails
+		}
+
+		err = api.Services.Storage.ReleaseTenantLock(ctx, tenantID, input.LockedBy)
 		if err != nil {
 			return usecaseStatus.Wrap(fmt.Errorf("failed to release tenant lock: %w", err), usecaseStatus.Internal)
 		}
@@ -91,7 +98,13 @@ func (api *API) UpdateTenantLockHeartbeat() usecase.Interactor {
 	}
 
 	u := usecase.NewInteractor(func(ctx context.Context, input updateTenantLockHeartbeatInput, output *updateTenantLockHeartbeatOutput) error {
-		err := api.Services.Storage.UpdateTenantLockHeartbeat(ctx, input.TenantID, input.LockedBy)
+		// URL-decode tenant_id since it may contain slashes
+		tenantID, err := url.QueryUnescape(input.TenantID)
+		if err != nil {
+			tenantID = input.TenantID // Use as-is if decode fails
+		}
+
+		err = api.Services.Storage.UpdateTenantLockHeartbeat(ctx, tenantID, input.LockedBy)
 		if err != nil {
 			return usecaseStatus.Wrap(fmt.Errorf("failed to update tenant lock heartbeat: %w", err), usecaseStatus.Internal)
 		}
@@ -119,7 +132,13 @@ func (api *API) CheckTenantLock() usecase.Interactor {
 	}
 
 	u := usecase.NewInteractor(func(ctx context.Context, input checkTenantLockInput, output *checkTenantLockOutput) error {
-		lock, err := api.Services.Storage.CheckTenantLock(ctx, input.TenantID)
+		// URL-decode tenant_id since it may contain slashes
+		tenantID, err := url.QueryUnescape(input.TenantID)
+		if err != nil {
+			tenantID = input.TenantID // Use as-is if decode fails
+		}
+
+		lock, err := api.Services.Storage.CheckTenantLock(ctx, tenantID)
 		if err != nil {
 			return usecaseStatus.Wrap(fmt.Errorf("failed to check tenant lock: %w", err), usecaseStatus.Internal)
 		}
@@ -213,6 +232,33 @@ func (api *API) CleanupStaleTenantLocks() usecase.Interactor {
 
 	u.SetTitle("Cleanup Stale Tenant Locks")
 	u.SetDescription("Removes tenant locks with stale heartbeats")
+	u.SetTags("packer", "locks", "cleanup")
+
+	return u
+}
+
+// CleanupInstanceTenantLocks removes all locks held by a specific instance
+func (api *API) CleanupInstanceTenantLocks() usecase.Interactor {
+	type cleanupInstanceTenantLocksInput struct {
+		InstanceID string `json:"instance_id" required:"true"`
+	}
+
+	type cleanupInstanceTenantLocksOutput struct {
+		DeletedCount int64 `json:"deleted_count"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input cleanupInstanceTenantLocksInput, output *cleanupInstanceTenantLocksOutput) error {
+		count, err := api.Services.Storage.CleanupInstanceTenantLocks(ctx, input.InstanceID)
+		if err != nil {
+			return usecaseStatus.Wrap(fmt.Errorf("failed to cleanup instance tenant locks: %w", err), usecaseStatus.Internal)
+		}
+
+		output.DeletedCount = count
+		return nil
+	})
+
+	u.SetTitle("Cleanup Instance Tenant Locks")
+	u.SetDescription("Removes all tenant locks held by a specific instance")
 	u.SetTags("packer", "locks", "cleanup")
 
 	return u

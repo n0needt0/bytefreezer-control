@@ -388,6 +388,7 @@ type Storage interface {
 	CheckFileLock(ctx context.Context, tenantID, datasetID, fileKey string) (*PiperFileLock, error)
 	CleanupExpiredFileLocks(ctx context.Context) (int64, error)
 	CleanupStaleFileLocks(ctx context.Context, thresholdMinutes int) (int64, error)
+	CleanupInstanceFileLocks(ctx context.Context, instanceID string) (int64, error)
 
 	// Piper Job Record operations
 	CreatePiperJob(ctx context.Context, job *PiperJobRecord) error
@@ -418,6 +419,7 @@ type Storage interface {
 	CleanupExpiredTenantLocks(ctx context.Context) (int64, error)
 	ClearAllTenantLocks(ctx context.Context) (int64, error)
 	CleanupStaleTenantLocks(ctx context.Context, thresholdMinutes int) (int64, error)
+	CleanupInstanceTenantLocks(ctx context.Context, instanceID string) (int64, error)
 
 	// Packer Parquet Metadata operations
 	UpsertParquetFileMetadata(ctx context.Context, metadata *PackerParquetFileMetadata) error

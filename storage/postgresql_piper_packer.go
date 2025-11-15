@@ -149,6 +149,27 @@ func (s *PostgreSQLStorage) CleanupStaleFileLocks(ctx context.Context, threshold
 	return rowsAffected, nil
 }
 
+// CleanupInstanceFileLocks removes all file locks held by a specific instance
+func (s *PostgreSQLStorage) CleanupInstanceFileLocks(ctx context.Context, instanceID string) (int64, error) {
+	query := `DELETE FROM piper_file_locks WHERE locked_by = $1`
+
+	result, err := s.db.ExecContext(ctx, query, instanceID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to cleanup instance file locks: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected > 0 {
+		log.Infof("Cleaned up %d abandoned file locks from instance %s", rowsAffected, instanceID)
+	}
+
+	return rowsAffected, nil
+}
+
 // ============================================================================
 // PIPER JOB RECORD OPERATIONS
 // ============================================================================

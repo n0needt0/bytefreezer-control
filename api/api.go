@@ -249,7 +249,7 @@ func (api *API) NewRouter() *web.Service {
 
 	// Packer Tenant Lock operations
 	service.Post("/api/v1/packer/locks/tenants", api.AcquireTenantLock())
-	service.Delete("/api/v1/packer/locks/tenants/{tenant_id}", api.ReleaseTenantLock())
+	service.Post("/api/v1/packer/locks/tenants/{tenant_id}/release", api.ReleaseTenantLock())
 	service.Put("/api/v1/packer/locks/tenants/{tenant_id}/heartbeat", api.UpdateTenantLockHeartbeat())
 	service.Get("/api/v1/packer/locks/tenants/{tenant_id}", api.CheckTenantLock())
 	service.Delete("/api/v1/packer/locks/tenants/cleanup/expired", api.CleanupExpiredTenantLocks())

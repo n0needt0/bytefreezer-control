@@ -39,9 +39,8 @@ CREATE TABLE IF NOT EXISTS dataset_schema (
     tenant_id VARCHAR(255) NOT NULL,
     dataset_id VARCHAR(255) NOT NULL,
     schema_type VARCHAR(10) NOT NULL CHECK (schema_type IN ('input', 'output')),
-    schema_fields JSONB NOT NULL,
-    sample_count INT NOT NULL DEFAULT 0,
-    last_updated TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    schema_data JSONB NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
 
     -- Foreign key constraint
     CONSTRAINT fk_schema_dataset FOREIGN KEY (dataset_id)
@@ -70,7 +69,6 @@ COMMENT ON COLUMN dataset_samples.line_number IS 'Line number in the batch where
 COMMENT ON COLUMN dataset_samples.sample_data IS 'Actual data sample as JSON object';
 COMMENT ON COLUMN dataset_samples.batch_id IS 'Batch identifier that generated this sample';
 
-COMMENT ON TABLE dataset_schema IS 'Stores inferred schema from dataset samples. Schema is computed when transform configuration is edited.';
+COMMENT ON TABLE dataset_schema IS 'Stores inferred schema from dataset samples. Schema is automatically submitted by piper after processing batches.';
 COMMENT ON COLUMN dataset_schema.schema_type IS 'Type of schema: input (before transformations) or output (after transformations)';
-COMMENT ON COLUMN dataset_schema.schema_fields IS 'Schema fields as JSON array with field name, type, count, nullable, and sample value';
-COMMENT ON COLUMN dataset_schema.sample_count IS 'Number of samples used to infer this schema';
+COMMENT ON COLUMN dataset_schema.schema_data IS 'Schema data as JSON with field information (name, type, count, nullable, sample value)';

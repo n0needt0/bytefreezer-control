@@ -153,6 +153,28 @@ type ComponentMetrics struct {
 	EndTime        time.Time `json:"end_time"`
 }
 
+// DatasetSample represents a data sample collected during pipeline processing
+type DatasetSample struct {
+	ID         int64                  `json:"id"`
+	TenantID   string                 `json:"tenant_id"`
+	DatasetID  string                 `json:"dataset_id"`
+	SampleType string                 `json:"sample_type"` // "input" or "output"
+	LineNumber int                    `json:"line_number"`
+	SampleData map[string]interface{} `json:"sample_data"`
+	BatchID    string                 `json:"batch_id"`
+	CreatedAt  time.Time              `json:"created_at"`
+}
+
+// DatasetSchema represents inferred schema from dataset samples
+type DatasetSchema struct {
+	ID         int64     `json:"id"`
+	TenantID   string    `json:"tenant_id"`
+	DatasetID  string    `json:"dataset_id"`
+	SchemaType string    `json:"schema_type"` // "input" or "output"
+	SchemaData []byte    `json:"schema_data"` // JSON schema data
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
 // AuditLog represents an audit log entry for tracking user actions
 type AuditLog struct {
 	ID           int64                  `json:"id" db:"id"`
@@ -443,6 +465,12 @@ type Storage interface {
 	GetPiperTransformationJob(ctx context.Context, jobID string) (*PiperTransformationJob, error)
 	ListPendingPiperTransformationJobs(ctx context.Context, limit int) ([]*PiperTransformationJob, error)
 	CleanupExpiredPiperTransformationJobs(ctx context.Context) (int, error)
+
+	// Dataset Schema and Sample operations
+	UpsertDatasetSchema(ctx context.Context, tenantID, datasetID, schemaType string, schema interface{}) error
+	GetDatasetSchema(ctx context.Context, tenantID, datasetID, schemaType string) ([]byte, error)
+	UpsertDatasetSamples(ctx context.Context, tenantID, datasetID, sampleType string, samples []DatasetSample, keepCount int) error
+	GetDatasetSamples(ctx context.Context, tenantID, datasetID, sampleType string, limit int) ([]DatasetSample, error)
 
 	// Utility operations
 	HealthCheck(ctx context.Context) error

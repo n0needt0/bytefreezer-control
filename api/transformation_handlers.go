@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -297,56 +298,69 @@ func (api *API) ListTransformationJobs() usecase.Interactor {
 	return u
 }
 
-// GetTransformationSchema proxies schema request to piper
+// GetTransformationSchema retrieves cached schema and samples from database
 func (api *API) GetTransformationSchema() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Extract path parameters from chi router context or URL
+		// Extract path parameters
 		tenantID := r.PathValue("tenantId")
 		datasetID := r.PathValue("datasetId")
-		count := r.URL.Query().Get("count")
-		if count == "" {
-			count = "10"
+
+		// Schema type from query param (default to "output")
+		schemaType := r.URL.Query().Get("type")
+		if schemaType == "" {
+			schemaType = "output"
 		}
 
-		// Get piper URL from config
-		piperURL := api.Config.Services.PiperURL
-		if piperURL == "" {
-			log.Error("Piper URL not configured in services config")
-			http.Error(w, "Piper service not configured", http.StatusServiceUnavailable)
-			return
-		}
-		url := fmt.Sprintf("%s/api/v1/transformations/%s/%s/schema?count=%s", piperURL, tenantID, datasetID, count)
-
-		// Create request with context
-		req, err := http.NewRequestWithContext(r.Context(), "GET", url, nil)
+		// Get schema from database
+		schemaData, err := api.Services.Storage.GetDatasetSchema(r.Context(), tenantID, datasetID, schemaType)
 		if err != nil {
-			log.Errorf("Failed to create proxy request: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			log.Errorf("Failed to get dataset schema: %v", err)
+			http.Error(w, "Failed to retrieve schema", http.StatusInternalServerError)
 			return
 		}
 
-		// Make request to piper
-		client := &http.Client{Timeout: 30 * time.Second}
-		resp, err := client.Do(req)
+		if schemaData == nil {
+			// No schema cached yet
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"error":"Schema not available yet. Piper will submit schema after processing the first batch."}`)) // #nosec G104
+			return
+		}
+
+		// Get samples from database
+		samples, err := api.Services.Storage.GetDatasetSamples(r.Context(), tenantID, datasetID, schemaType, 10)
 		if err != nil {
-			log.Errorf("Failed to proxy schema request to piper: %v", err)
-			http.Error(w, "Failed to connect to piper service", http.StatusServiceUnavailable)
-			return
-		}
-		defer resp.Body.Close()
-
-		// Read response body
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Errorf("Failed to read piper response: %v", err)
-			http.Error(w, "Failed to read response", http.StatusInternalServerError)
-			return
+			log.Errorf("Failed to get dataset samples: %v", err)
+			// Continue without samples, schema is more important
+			samples = []storage.DatasetSample{}
 		}
 
-		// Forward response status and body
+		// Build response matching expected format
+		type SchemaResponse struct {
+			Schema  interface{}     `json:"schema"`
+			Samples []interface{}   `json:"samples"`
+		}
+
+		var schema interface{}
+		if err := json.Unmarshal(schemaData, &schema); err != nil {
+			log.Errorf("Failed to unmarshal schema: %v", err)
+			http.Error(w, "Failed to parse schema", http.StatusInternalServerError)
+			return
+		}
+
+		// Convert samples to response format
+		sampleData := make([]interface{}, 0, len(samples))
+		for _, s := range samples {
+			sampleData = append(sampleData, s.SampleData)
+		}
+
+		response := SchemaResponse{
+			Schema:  schema,
+			Samples: sampleData,
+		}
+
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(resp.StatusCode)
-		w.Write(body) // #nosec G104 - write error not critical for proxy
+		json.NewEncoder(w).Encode(response) // #nosec G104
 	}
 }
 
@@ -440,4 +454,73 @@ func (api *API) GetTransformationPreview() http.HandlerFunc {
 		w.WriteHeader(resp.StatusCode)
 		w.Write(body) // #nosec G104 - write error not critical for proxy
 	}
+}
+
+// SubmitDatasetSchema accepts schema and samples from piper after batch processing
+func (api *API) SubmitDatasetSchema() usecase.Interactor {
+	type SampleData struct {
+		LineNumber int                    `json:"line_number"`
+		SampleData map[string]interface{} `json:"sample_data"`
+		BatchID    string                 `json:"batch_id"`
+	}
+
+	type Input struct {
+		TenantID   string                 `path:"tenantId" required:"true"`
+		DatasetID  string                 `path:"datasetId" required:"true"`
+		SchemaType string                 `json:"schema_type" required:"true"` // "input" or "output"
+		Schema     interface{}            `json:"schema" required:"true"`      // The inferred schema
+		Samples    []SampleData           `json:"samples" required:"true"`     // Sample records (max 10)
+	}
+
+	type Output struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input Input, output *Output) error {
+		// Validate schema type
+		if input.SchemaType != "input" && input.SchemaType != "output" {
+			return fmt.Errorf("schema_type must be 'input' or 'output'")
+		}
+
+		// Validate sample count (should be 10)
+		if len(input.Samples) > 10 {
+			return fmt.Errorf("maximum 10 samples allowed")
+		}
+
+		// Store schema
+		if err := api.Services.Storage.UpsertDatasetSchema(ctx, input.TenantID, input.DatasetID, input.SchemaType, input.Schema); err != nil {
+			log.Errorf("Failed to store dataset schema: %v", err)
+			return fmt.Errorf("failed to store schema: %w", err)
+		}
+
+		// Convert and store samples
+		if len(input.Samples) > 0 {
+			samples := make([]storage.DatasetSample, 0, len(input.Samples))
+			for _, s := range input.Samples {
+				samples = append(samples, storage.DatasetSample{
+					TenantID:   input.TenantID,
+					DatasetID:  input.DatasetID,
+					SampleType: input.SchemaType,
+					LineNumber: s.LineNumber,
+					SampleData: s.SampleData,
+					BatchID:    s.BatchID,
+					CreatedAt:  time.Now(),
+				})
+			}
+
+			if err := api.Services.Storage.UpsertDatasetSamples(ctx, input.TenantID, input.DatasetID, input.SchemaType, samples, 10); err != nil {
+				log.Errorf("Failed to store dataset samples: %v", err)
+				return fmt.Errorf("failed to store samples: %w", err)
+			}
+		}
+
+		log.Infof("Stored %s schema and %d samples for %s/%s", input.SchemaType, len(input.Samples), input.TenantID, input.DatasetID)
+
+		output.Success = true
+		output.Message = fmt.Sprintf("Stored schema and %d samples successfully", len(input.Samples))
+		return nil
+	})
+
+	return u
 }

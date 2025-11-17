@@ -21,6 +21,7 @@ type Services struct {
 	AuditLog              *AuditLogService        // Audit logging service
 	DatasetTestingService *DatasetTestingService  // Periodic dataset testing service
 	ErrorReporting        *ErrorReportingService  // Error reporting service
+	OperationTracking     *OperationTrackingService // Operation/activity tracking service
 	Stats                 *ControlStats
 	mutex                 sync.RWMutex
 }
@@ -159,6 +160,10 @@ func NewServices(config *config.Config) *Services {
 				// Initialize error reporting service
 				services.ErrorReporting = NewErrorReportingService(db)
 				log.Info("Error reporting service initialized")
+
+				// Initialize operation tracking service
+				services.OperationTracking = NewOperationTrackingService(db)
+				log.Info("Operation tracking service initialized")
 
 				// Initialize dataset testing service (periodic testing every 5 minutes)
 				services.DatasetTestingService = NewDatasetTestingService(services.Storage, services.HealthService)

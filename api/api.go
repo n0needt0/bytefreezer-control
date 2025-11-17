@@ -276,6 +276,18 @@ func (api *API) NewRouter() *web.Service {
 	// Packer Metadata Summary operations
 	service.Get("/api/v1/packer/metadata/summary/{tenant_id}/{dataset_id}/{partition_path}", api.GetParquetMetadataSummary())
 
+	// ====================================================================================
+	// ACTIVITY TRACKING ENDPOINTS (for real-time operation monitoring)
+	// ====================================================================================
+
+	// Activity tracking endpoints (services report here)
+	service.Post("/api/v1/activity/operations", api.UpsertServiceOperation())
+
+	// Activity retrieval endpoints (UI queries here)
+	service.Get("/api/v1/activity/operations/active", api.GetActiveOperations())
+	service.Get("/api/v1/activity/operations/recent", api.GetRecentOperations())
+	service.Get("/api/v1/activity/summary", api.GetActivitySummary())
+
 	// API documentation
 	service.Docs("/v1/docs", swgui.New)
 

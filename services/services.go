@@ -22,6 +22,7 @@ type Services struct {
 	DatasetTestingService *DatasetTestingService  // Periodic dataset testing service
 	ErrorReporting        *ErrorReportingService  // Error reporting service
 	OperationTracking     *OperationTrackingService // Operation/activity tracking service
+	ReceiverThroughput    *ReceiverThroughputService // Receiver throughput tracking service
 	Stats                 *ControlStats
 	mutex                 sync.RWMutex
 }
@@ -164,6 +165,10 @@ func NewServices(config *config.Config) *Services {
 				// Initialize operation tracking service
 				services.OperationTracking = NewOperationTrackingService(db)
 				log.Info("Operation tracking service initialized")
+
+				// Initialize receiver throughput service
+				services.ReceiverThroughput = NewReceiverThroughputService(db)
+				log.Info("Receiver throughput service initialized")
 
 				// Initialize dataset testing service (periodic testing every 5 minutes)
 				services.DatasetTestingService = NewDatasetTestingService(services.Storage, services.HealthService)

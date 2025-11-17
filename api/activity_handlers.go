@@ -181,3 +181,73 @@ func (api *API) GetActivitySummary() usecase.Interactor {
 
 	return u
 }
+
+// RecordReceiverThroughput records receiver webhook throughput metrics
+func (api *API) RecordReceiverThroughput() usecase.Interactor {
+	type recordThroughputInput struct {
+		AccountID     string `json:"account_id"`
+		TenantID      string `json:"tenant_id" required:"true"`
+		DatasetID     string `json:"dataset_id" required:"true"`
+		BytesReceived int64  `json:"bytes_received" required:"true"`
+		LinesReceived int64  `json:"lines_received" required:"true"`
+		BytesStored   int64  `json:"bytes_stored" required:"true"`
+		Success       bool   `json:"success"`
+	}
+
+	type recordThroughputOutput struct {
+		Success bool   `json:"success"`
+		Message string `json:"message,omitempty"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input recordThroughputInput, output *recordThroughputOutput) error {
+		if err := api.Services.ReceiverThroughput.RecordThroughput(ctx,
+			input.AccountID, input.TenantID, input.DatasetID,
+			input.BytesReceived, input.LinesReceived, input.BytesStored,
+			input.Success); err != nil {
+			return usecaseStatus.Wrap(fmt.Errorf("failed to record throughput: %w", err), usecaseStatus.Internal)
+		}
+
+		output.Success = true
+		output.Message = "Throughput recorded successfully"
+		return nil
+	})
+
+	u.SetTitle("Record Receiver Throughput")
+	u.SetDescription("Record receiver webhook throughput metrics (aggregated per minute)")
+	u.SetTags("Activity", "Receiver")
+	u.SetExpectedErrors(usecaseStatus.Internal)
+
+	return u
+}
+
+// GetReceiverThroughput retrieves receiver throughput for a dataset
+func (api *API) GetReceiverThroughput() usecase.Interactor {
+	type getThroughputInput struct {
+		TenantID  string `query:"tenant_id" required:"true"`
+		DatasetID string `query:"dataset_id" required:"true"`
+		Minutes   int    `query:"minutes" default:"60"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input getThroughputInput, output *services.ThroughputSummary) error {
+		// Get account_id from context if available (for non-system admins)
+		accountID := ""
+		if !middleware.IsSystemAdmin(ctx) {
+			accountID = middleware.GetAccountIDFromContext(ctx)
+		}
+
+		summary, err := api.Services.ReceiverThroughput.GetThroughput(ctx, accountID, input.TenantID, input.DatasetID, input.Minutes)
+		if err != nil {
+			return usecaseStatus.Wrap(fmt.Errorf("failed to get throughput: %w", err), usecaseStatus.Internal)
+		}
+
+		*output = *summary
+		return nil
+	})
+
+	u.SetTitle("Get Receiver Throughput")
+	u.SetDescription("Get receiver throughput metrics (bytes/min, lines/min) for a dataset")
+	u.SetTags("Activity", "Receiver")
+	u.SetExpectedErrors(usecaseStatus.Internal)
+
+	return u
+}

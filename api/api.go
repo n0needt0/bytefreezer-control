@@ -288,6 +288,10 @@ func (api *API) NewRouter() *web.Service {
 	service.Get("/api/v1/activity/operations/recent", api.GetRecentOperations())
 	service.Get("/api/v1/activity/summary", api.GetActivitySummary())
 
+	// Receiver throughput endpoints
+	service.Post("/api/v1/activity/receiver/throughput", api.RecordReceiverThroughput())
+	service.Get("/api/v1/activity/receiver/throughput", api.GetReceiverThroughput())
+
 	// API documentation
 	service.Docs("/v1/docs", swgui.New)
 

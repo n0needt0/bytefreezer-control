@@ -177,6 +177,7 @@ func (api *API) NewRouter() *web.Service {
 	service.Post("/api/v1/errors", api.ReportError())
 	service.Get("/api/v1/errors", api.ListErrors())
 	service.Get("/api/v1/errors/stats", api.GetErrorStats())
+	service.Patch("/api/v1/errors/{errorId}", api.UpdateErrorStatus())
 
 	// Error reporting endpoints (account-scoped)
 	service.Post("/api/v1/accounts/{accountId}/errors", api.ReportAccountError())

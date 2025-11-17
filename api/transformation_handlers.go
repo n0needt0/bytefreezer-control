@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
@@ -515,51 +514,89 @@ func (api *API) getPiperURLForTenant(ctx context.Context, tenantID string) (stri
 	return piperURL, nil
 }
 
-// GetTransformationStats proxies stats request to piper
+// GetTransformationStats reads stats from database (submitted by piper)
 func (api *API) GetTransformationStats() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tenantID := r.PathValue("tenantId")
 		datasetID := r.PathValue("datasetId")
 
-		// Get correct piper URL based on tenant's account deployment type
-		piperURL, err := api.getPiperURLForTenant(r.Context(), tenantID)
-		if err != nil {
-			log.Errorf("Failed to get piper URL for tenant %s: %v", tenantID, err)
-			http.Error(w, "Failed to determine piper service location", http.StatusServiceUnavailable)
-			return
-		}
-		url := fmt.Sprintf("%s/api/v1/transformations/%s/%s/stats", piperURL, tenantID, datasetID)
+		// Query stats from database
+		query := `
+			SELECT tenant_id, dataset_id, enabled, filter_count, total_processed,
+			       success_count, error_count, skipped_count, avg_rows_per_sec, last_processed
+			FROM piper_transformation_stats
+			WHERE tenant_id = $1 AND dataset_id = $2`
 
-		req, err := http.NewRequestWithContext(r.Context(), "GET", url, nil)
-		if err != nil {
-			log.Errorf("Failed to create proxy request: %v", err)
+		var stats struct {
+			TenantID       string     `json:"tenant_id"`
+			DatasetID      string     `json:"dataset_id"`
+			Enabled        bool       `json:"enabled"`
+			FilterCount    int        `json:"filter_count"`
+			TotalProcessed int64      `json:"total_processed"`
+			SuccessCount   int64      `json:"success_count"`
+			ErrorCount     int64      `json:"error_count"`
+			SkippedCount   int64      `json:"skipped_count"`
+			AvgRowsPerSec  float64    `json:"avg_rows_per_sec"`
+			LastProcessed  *time.Time `json:"last_processed"`
+		}
+
+		// Type assert to PostgreSQLStorage to access DB method
+		psqlStorage, ok := api.Services.Storage.(*storage.PostgreSQLStorage)
+		if !ok {
+			log.Error("Storage is not PostgreSQLStorage")
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 
-		client := &http.Client{Timeout: 30 * time.Second}
-		resp, err := client.Do(req)
+		err := psqlStorage.GetDB().QueryRowContext(r.Context(), query, tenantID, datasetID).Scan(
+			&stats.TenantID,
+			&stats.DatasetID,
+			&stats.Enabled,
+			&stats.FilterCount,
+			&stats.TotalProcessed,
+			&stats.SuccessCount,
+			&stats.ErrorCount,
+			&stats.SkippedCount,
+			&stats.AvgRowsPerSec,
+			&stats.LastProcessed,
+		)
+
 		if err != nil {
-			log.Errorf("Failed to proxy stats request to piper: %v", err)
-			http.Error(w, "Failed to connect to piper service", http.StatusServiceUnavailable)
+			if err.Error() == "sql: no rows in result set" {
+				// No stats available yet
+				response := map[string]interface{}{
+					"stats": map[string]interface{}{
+						"tenant_id":        tenantID,
+						"dataset_id":       datasetID,
+						"enabled":          false,
+						"filter_count":     0,
+						"total_processed":  0,
+						"success_count":    0,
+						"error_count":      0,
+						"skipped_count":    0,
+						"avg_rows_per_sec": 0,
+						"last_processed":   nil,
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(response) // #nosec G104
+				return
+			}
+			log.Errorf("Failed to query transformation stats: %v", err)
+			http.Error(w, "Failed to retrieve stats", http.StatusInternalServerError)
 			return
 		}
-		defer resp.Body.Close()
 
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Errorf("Failed to read piper response: %v", err)
-			http.Error(w, "Failed to read response", http.StatusInternalServerError)
-			return
+		response := map[string]interface{}{
+			"stats": stats,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(resp.StatusCode)
-		w.Write(body) // #nosec G104 - write error not critical for proxy
+		json.NewEncoder(w).Encode(response) // #nosec G104
 	}
 }
 
-// GetTransformationPreview proxies preview request to piper
+// GetTransformationPreview reads preview data from database (submitted by piper)
 func (api *API) GetTransformationPreview() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tenantID := r.PathValue("tenantId")
@@ -569,41 +606,75 @@ func (api *API) GetTransformationPreview() http.HandlerFunc {
 			count = "10"
 		}
 
-		// Get correct piper URL based on tenant's account deployment type
-		piperURL, err := api.getPiperURLForTenant(r.Context(), tenantID)
-		if err != nil {
-			log.Errorf("Failed to get piper URL for tenant %s: %v", tenantID, err)
-			http.Error(w, "Failed to determine piper service location", http.StatusServiceUnavailable)
-			return
-		}
-		url := fmt.Sprintf("%s/api/v1/transformations/%s/%s/preview?count=%s", piperURL, tenantID, datasetID, count)
+		// Query preview samples from database
+		query := `
+			SELECT line_number, original_data, transformed_data, created_at
+			FROM piper_transformation_preview
+			WHERE tenant_id = $1 AND dataset_id = $2
+			ORDER BY created_at DESC
+			LIMIT $3`
 
-		req, err := http.NewRequestWithContext(r.Context(), "GET", url, nil)
-		if err != nil {
-			log.Errorf("Failed to create proxy request: %v", err)
+		// Type assert to PostgreSQLStorage to access DB method
+		psqlStorage, ok := api.Services.Storage.(*storage.PostgreSQLStorage)
+		if !ok {
+			log.Error("Storage is not PostgreSQLStorage")
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 
-		client := &http.Client{Timeout: 30 * time.Second}
-		resp, err := client.Do(req)
+		rows, err := psqlStorage.GetDB().QueryContext(r.Context(), query, tenantID, datasetID, count)
 		if err != nil {
-			log.Errorf("Failed to proxy preview request to piper: %v", err)
-			http.Error(w, "Failed to connect to piper service", http.StatusServiceUnavailable)
+			log.Errorf("Failed to query transformation preview: %v", err)
+			http.Error(w, "Failed to retrieve preview", http.StatusInternalServerError)
 			return
 		}
-		defer resp.Body.Close()
+		defer rows.Close()
 
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Errorf("Failed to read piper response: %v", err)
-			http.Error(w, "Failed to read response", http.StatusInternalServerError)
-			return
+		type PreviewSample struct {
+			Input      map[string]interface{} `json:"input"`
+			Output     map[string]interface{} `json:"output"`
+			Applied    []string               `json:"applied"`
+			Skipped    bool                   `json:"skipped"`
+			DurationMs int                    `json:"duration_ms"`
+		}
+
+		samples := []PreviewSample{}
+		for rows.Next() {
+			var lineNumber int
+			var originalJSON, transformedJSON []byte
+			var createdAt time.Time
+
+			err := rows.Scan(&lineNumber, &originalJSON, &transformedJSON, &createdAt)
+			if err != nil {
+				log.Errorf("Failed to scan preview row: %v", err)
+				continue
+			}
+
+			var sample PreviewSample
+			// Parse JSON
+			if err := json.Unmarshal(originalJSON, &sample.Input); err != nil {
+				log.Errorf("Failed to unmarshal original data: %v", err)
+				continue
+			}
+			if err := json.Unmarshal(transformedJSON, &sample.Output); err != nil {
+				log.Errorf("Failed to unmarshal transformed data: %v", err)
+				continue
+			}
+			// TODO: These fields should come from piper when it submits preview data
+			sample.Applied = []string{} // Will be populated when piper submits
+			sample.Skipped = false
+			sample.DurationMs = 0
+
+			samples = append(samples, sample)
+		}
+
+		response := map[string]interface{}{
+			"samples": samples,
+			"count":   len(samples),
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(resp.StatusCode)
-		w.Write(body) // #nosec G104 - write error not critical for proxy
+		json.NewEncoder(w).Encode(response) // #nosec G104
 	}
 }
 

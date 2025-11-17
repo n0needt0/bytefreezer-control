@@ -295,7 +295,7 @@ type PackerParquetFileMetadata struct {
 	CreatedAt       time.Time              `json:"created_at" db:"created_at"`
 	LastModified    time.Time              `json:"last_modified" db:"last_modified"`
 	SchemaJSON      map[string]interface{} `json:"schema_json" db:"schema_json"`
-	ColumnStats     map[string]interface{} `json:"column_stats" db:"column_stats"`
+	ColumnStats     interface{}            `json:"column_stats" db:"column_stats"` // Can be array or map
 	FileChecksum    string                 `json:"file_checksum" db:"file_checksum"`
 	InstanceID      string                 `json:"instance_id" db:"instance_id"`
 	MetadataVersion int                    `json:"metadata_version" db:"metadata_version"`

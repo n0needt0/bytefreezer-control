@@ -418,3 +418,54 @@ func (api *API) GetAccountErrorStats() usecase.Interactor {
 
 	return u
 }
+
+// UpdateErrorStatusRequest is the request for updating error status
+type UpdateErrorStatusRequest struct {
+	ErrorID int64  `path:"errorId" required:"true"`
+	Status  string `json:"status" required:"true"`
+}
+
+// UpdateErrorStatusResponse is the response for updating error status
+type UpdateErrorStatusResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+// UpdateErrorStatus handles updating error status (mark as resolved/ignored)
+func (api *API) UpdateErrorStatus() usecase.Interactor {
+	u := usecase.NewInteractor(func(ctx context.Context, input UpdateErrorStatusRequest, output *UpdateErrorStatusResponse) error {
+		api.Services.IncrementAPIRequests()
+
+		// Extract claims from context
+		claims, ok := ctx.Value(middleware.JWTClaimsContextKey).(*services.JWTClaims)
+		if !ok {
+			return usecaseStatus.Wrap(fmt.Errorf("authentication required"), usecaseStatus.Unauthenticated)
+		}
+
+		if api.Services.ErrorReporting == nil {
+			return usecaseStatus.Wrap(fmt.Errorf("error reporting service not available"), usecaseStatus.InvalidArgument)
+		}
+
+		// System admins can update any error, others can only update errors for their account
+		accountID := ""
+		if claims.Role != "system_admin" {
+			accountID = claims.AccountID
+		}
+
+		err := api.Services.ErrorReporting.UpdateErrorStatus(ctx, input.ErrorID, input.Status, accountID)
+		if err != nil {
+			return usecaseStatus.Wrap(fmt.Errorf("failed to update error status: %w", err), usecaseStatus.InvalidArgument)
+		}
+
+		output.Success = true
+		output.Message = fmt.Sprintf("Error %d marked as %s", input.ErrorID, input.Status)
+
+		return nil
+	})
+
+	u.SetTitle("Update Error Status")
+	u.SetDescription("Updates error status to resolved, ignored, or active")
+	u.SetTags("errors", "monitoring")
+
+	return u
+}

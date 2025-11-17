@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/n0needt0/bytefreezer-control/storage"
 	"github.com/swaggest/usecase"
 	usecaseStatus "github.com/swaggest/usecase/status"
@@ -280,7 +281,7 @@ func (api *API) UpsertParquetFileMetadata() usecase.Interactor {
 		CreatedAt       time.Time              `json:"created_at"`
 		LastModified    time.Time              `json:"last_modified" required:"true"`
 		SchemaJSON      map[string]interface{} `json:"schema_json" required:"true"`
-		ColumnStats     map[string]interface{} `json:"column_stats"`
+		ColumnStats     interface{}            `json:"column_stats"` // Can be array or map
 		FileChecksum    string                 `json:"file_checksum"`
 		InstanceID      string                 `json:"instance_id"`
 	}
@@ -359,8 +360,25 @@ func (api *API) GetAllParquetFileMetadata() usecase.Interactor {
 		DatasetID string `path:"dataset_id" required:"true"`
 	}
 
+	type parquetFileMetadataResponse struct {
+		ID              int64     `json:"id"`
+		TenantID        string    `json:"tenant_id"`
+		DatasetID       string    `json:"dataset_id"`
+		FilePath        string    `json:"file_path"`
+		PartitionPath   string    `json:"partition_path"`
+		FileSizeBytes   int64     `json:"file_size_bytes"`
+		RowCount        int64     `json:"row_count"`
+		CreatedAt       time.Time `json:"created_at"`
+		LastModified    time.Time `json:"last_modified"`
+		SchemaJSON      string    `json:"schema_json"`      // JSON string, not object
+		ColumnStats     string    `json:"column_stats"`     // JSON string, not object
+		FileChecksum    string    `json:"file_checksum"`
+		InstanceID      string    `json:"instance_id"`
+		MetadataVersion int       `json:"metadata_version"`
+	}
+
 	type getAllParquetFileMetadataOutput struct {
-		Files []*storage.PackerParquetFileMetadata `json:"files"`
+		Files []*parquetFileMetadataResponse `json:"files"`
 	}
 
 	u := usecase.NewInteractor(func(ctx context.Context, input getAllParquetFileMetadataInput, output *getAllParquetFileMetadataOutput) error {
@@ -369,7 +387,39 @@ func (api *API) GetAllParquetFileMetadata() usecase.Interactor {
 			return usecaseStatus.Wrap(fmt.Errorf("failed to get all parquet file metadata: %w", err), usecaseStatus.Internal)
 		}
 
-		output.Files = files
+		// Convert to response format with JSON strings
+		output.Files = make([]*parquetFileMetadataResponse, len(files))
+		for i, file := range files {
+			// Marshal schema_json to JSON string
+			schemaJSON, err := sonic.Marshal(file.SchemaJSON)
+			if err != nil {
+				return usecaseStatus.Wrap(fmt.Errorf("failed to marshal schema_json: %w", err), usecaseStatus.Internal)
+			}
+
+			// Marshal column_stats to JSON string
+			columnStats, err := sonic.Marshal(file.ColumnStats)
+			if err != nil {
+				return usecaseStatus.Wrap(fmt.Errorf("failed to marshal column_stats: %w", err), usecaseStatus.Internal)
+			}
+
+			output.Files[i] = &parquetFileMetadataResponse{
+				ID:              file.ID,
+				TenantID:        file.TenantID,
+				DatasetID:       file.DatasetID,
+				FilePath:        file.FilePath,
+				PartitionPath:   file.PartitionPath,
+				FileSizeBytes:   file.FileSizeBytes,
+				RowCount:        file.RowCount,
+				CreatedAt:       file.CreatedAt,
+				LastModified:    file.LastModified,
+				SchemaJSON:      string(schemaJSON),
+				ColumnStats:     string(columnStats),
+				FileChecksum:    file.FileChecksum,
+				InstanceID:      file.InstanceID,
+				MetadataVersion: file.MetadataVersion,
+			}
+		}
+
 		return nil
 	})
 

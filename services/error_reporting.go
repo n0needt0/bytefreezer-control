@@ -397,6 +397,59 @@ func (s *ErrorReportingService) GetErrorStats(ctx context.Context, accountID str
 	}, nil
 }
 
+// UpdateErrorStatus updates the status of an error by ID
+func (s *ErrorReportingService) UpdateErrorStatus(ctx context.Context, errorID int64, status string, accountID string) error {
+	// Validate status
+	validStatuses := map[string]bool{
+		"active": true, "resolved": true, "ignored": true,
+	}
+	if !validStatuses[status] {
+		return fmt.Errorf("invalid status: %s", status)
+	}
+
+	// If accountID is provided (not system admin), verify the error belongs to this account
+	if accountID != "" {
+		var errorAccountID sql.NullString
+		err := s.db.QueryRowContext(ctx, "SELECT account_id FROM system_errors WHERE id = $1", errorID).Scan(&errorAccountID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				return fmt.Errorf("error not found")
+			}
+			return fmt.Errorf("failed to verify error ownership: %w", err)
+		}
+
+		// If error has an account_id, it must match the requesting account
+		if errorAccountID.Valid && errorAccountID.String != accountID {
+			return fmt.Errorf("unauthorized: error belongs to different account")
+		}
+	}
+
+	// Update the error status
+	query := `
+		UPDATE system_errors
+		SET status = $1,
+		    resolved_at = CASE WHEN $1 = 'resolved' THEN NOW() ELSE NULL END,
+		    updated_at = NOW()
+		WHERE id = $2`
+
+	result, err := s.db.ExecContext(ctx, query, status, errorID)
+	if err != nil {
+		return fmt.Errorf("failed to update error status: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("error not found")
+	}
+
+	log.Debugf("Updated error %d status to %s", errorID, status)
+	return nil
+}
+
 // generateErrorHash creates a consistent hash for error deduplication
 func (s *ErrorReportingService) generateErrorHash(component, errorType, errorMessage, tenantID, datasetID string) string {
 	// Create a consistent string for hashing

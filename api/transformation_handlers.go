@@ -388,11 +388,21 @@ func (api *API) GetTransformationSchema() http.HandlerFunc {
 			lastBatchTime = &metrics[0].RecordedAt
 		}
 
-		var schema interface{}
-		if err := json.Unmarshal(schemaMetadata.SchemaData, &schema); err != nil {
+		// Parse schema data which has structure: {"fields": [...], "inferred_at": "...", "sample_count": 10}
+		var schemaData map[string]interface{}
+		if err := json.Unmarshal(schemaMetadata.SchemaData, &schemaData); err != nil {
 			log.Errorf("Failed to unmarshal schema: %v", err)
 			http.Error(w, "Failed to parse schema", http.StatusInternalServerError)
 			return
+		}
+
+		// Extract fields array from schema data
+		var schemaFields interface{}
+		if fields, ok := schemaData["fields"]; ok {
+			schemaFields = fields
+		} else {
+			// Fallback to entire schema if fields key doesn't exist
+			schemaFields = schemaData
 		}
 
 		// Convert samples to response format
@@ -409,7 +419,7 @@ func (api *API) GetTransformationSchema() http.HandlerFunc {
 		}
 
 		response := SchemaResponse{
-			Schema:           schema,
+			Schema:           schemaFields,
 			Samples:          sampleData,
 			SchemaUpdatedAt:  &schemaMetadata.UpdatedAt,
 			DatasetEnabled:   datasetEnabled,

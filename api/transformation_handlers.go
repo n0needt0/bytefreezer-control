@@ -405,10 +405,13 @@ func (api *API) GetTransformationSchema() http.HandlerFunc {
 			schemaFields = schemaData
 		}
 
-		// Convert samples to response format
+		// Convert samples to response format with line numbers
 		sampleData := make([]interface{}, 0, len(samples))
 		for _, s := range samples {
-			sampleData = append(sampleData, s.SampleData)
+			sampleData = append(sampleData, map[string]interface{}{
+				"line_number":  s.LineNumber,
+				"parsed_data":  s.SampleData,
+			})
 		}
 
 		// Calculate schema age in seconds if we have last batch time

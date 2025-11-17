@@ -98,9 +98,11 @@ type HealthReportingConfig struct {
 }
 
 type ServicesConfig struct {
-	PiperURL    string `yaml:"piper_url"`    // Piper service URL for transformation proxying
-	ReceiverURL string `yaml:"receiver_url"` // Receiver service URL for health checks
-	PackerURL   string `yaml:"packer_url"`   // Packer service URL for health checks (optional)
+	PiperURL         string `yaml:"piper_url"`          // Piper service URL for transformation proxying (legacy/default)
+	PiperManagedURL  string `yaml:"piper_managed_url"`  // Piper service URL for managed deployments
+	PiperOnPremURL   string `yaml:"piper_onprem_url"`   // Piper service URL for on-prem deployments
+	ReceiverURL      string `yaml:"receiver_url"`       // Receiver service URL for health checks
+	PackerURL        string `yaml:"packer_url"`         // Packer service URL for health checks (optional)
 }
 
 // LoadConfig loads configuration from file and environment variables

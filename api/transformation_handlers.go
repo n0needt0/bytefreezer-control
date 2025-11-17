@@ -396,13 +396,55 @@ func (api *API) GetTransformationSchema() http.HandlerFunc {
 			return
 		}
 
-		// Extract fields array from schema data
-		var schemaFields interface{}
-		if fields, ok := schemaData["fields"]; ok {
-			schemaFields = fields
-		} else {
-			// Fallback to entire schema if fields key doesn't exist
-			schemaFields = schemaData
+		// Transform piper schema format to UI expected format
+		// Piper format: {"name": "field", "types": ["string", "null"]}
+		// UI format: {"name": "field", "type": "string", "count": 10, "nullable": true, "sample": "value"}
+		var schemaFields []map[string]interface{}
+		if fieldsRaw, ok := schemaData["fields"]; ok {
+			if fieldsList, ok := fieldsRaw.([]interface{}); ok {
+				schemaFields = make([]map[string]interface{}, 0, len(fieldsList))
+				for _, fieldRaw := range fieldsList {
+					if field, ok := fieldRaw.(map[string]interface{}); ok {
+						transformedField := make(map[string]interface{})
+
+						// Copy name
+						if name, ok := field["name"]; ok {
+							transformedField["name"] = name
+						}
+
+						// Transform types array to single type + nullable flag
+						nullable := false
+						primaryType := "unknown"
+						if types, ok := field["types"].([]interface{}); ok && len(types) > 0 {
+							for _, t := range types {
+								if typeStr, ok := t.(string); ok {
+									if typeStr == "null" {
+										nullable = true
+									} else {
+										primaryType = typeStr
+									}
+								}
+							}
+						}
+						transformedField["type"] = primaryType
+						transformedField["nullable"] = nullable
+
+						// Add count (sample_count from schema data)
+						if sampleCount, ok := schemaData["sample_count"]; ok {
+							transformedField["count"] = sampleCount
+						} else {
+							transformedField["count"] = 0
+						}
+
+						// Add sample if available
+						if sample, ok := field["sample"]; ok {
+							transformedField["sample"] = sample
+						}
+
+						schemaFields = append(schemaFields, transformedField)
+					}
+				}
+			}
 		}
 
 		// Convert samples to response format with line numbers
@@ -435,17 +477,55 @@ func (api *API) GetTransformationSchema() http.HandlerFunc {
 	}
 }
 
+// getPiperURLForTenant gets the correct piper URL based on tenant's account deployment type
+func (api *API) getPiperURLForTenant(ctx context.Context, tenantID string) (string, error) {
+	// Get tenant to find account_id
+	tenant, err := api.Services.Storage.GetTenantByID(ctx, tenantID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get tenant: %w", err)
+	}
+
+	// Get account to check deployment type
+	account, err := api.Services.Storage.GetAccount(ctx, tenant.AccountID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get account: %w", err)
+	}
+
+	// Route to correct piper based on deployment type
+	var piperURL string
+	switch account.DeploymentType {
+	case storage.DeploymentTypeManaged:
+		piperURL = api.Config.Services.PiperManagedURL
+		if piperURL == "" {
+			piperURL = api.Config.Services.PiperURL // fallback to legacy config
+		}
+	case storage.DeploymentTypeOnPrem, storage.DeploymentTypeAirGapped:
+		piperURL = api.Config.Services.PiperOnPremURL
+		if piperURL == "" {
+			piperURL = api.Config.Services.PiperURL // fallback to legacy config
+		}
+	default:
+		piperURL = api.Config.Services.PiperURL
+	}
+
+	if piperURL == "" {
+		return "", fmt.Errorf("piper URL not configured for deployment type: %s", account.DeploymentType)
+	}
+
+	return piperURL, nil
+}
+
 // GetTransformationStats proxies stats request to piper
 func (api *API) GetTransformationStats() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tenantID := r.PathValue("tenantId")
 		datasetID := r.PathValue("datasetId")
 
-		// Get piper URL from config
-		piperURL := api.Config.Services.PiperURL
-		if piperURL == "" {
-			log.Error("Piper URL not configured in services config")
-			http.Error(w, "Piper service not configured", http.StatusServiceUnavailable)
+		// Get correct piper URL based on tenant's account deployment type
+		piperURL, err := api.getPiperURLForTenant(r.Context(), tenantID)
+		if err != nil {
+			log.Errorf("Failed to get piper URL for tenant %s: %v", tenantID, err)
+			http.Error(w, "Failed to determine piper service location", http.StatusServiceUnavailable)
 			return
 		}
 		url := fmt.Sprintf("%s/api/v1/transformations/%s/%s/stats", piperURL, tenantID, datasetID)
@@ -489,11 +569,11 @@ func (api *API) GetTransformationPreview() http.HandlerFunc {
 			count = "10"
 		}
 
-		// Get piper URL from config
-		piperURL := api.Config.Services.PiperURL
-		if piperURL == "" {
-			log.Error("Piper URL not configured in services config")
-			http.Error(w, "Piper service not configured", http.StatusServiceUnavailable)
+		// Get correct piper URL based on tenant's account deployment type
+		piperURL, err := api.getPiperURLForTenant(r.Context(), tenantID)
+		if err != nil {
+			log.Errorf("Failed to get piper URL for tenant %s: %v", tenantID, err)
+			http.Error(w, "Failed to determine piper service location", http.StatusServiceUnavailable)
 			return
 		}
 		url := fmt.Sprintf("%s/api/v1/transformations/%s/%s/preview?count=%s", piperURL, tenantID, datasetID, count)

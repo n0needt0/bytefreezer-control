@@ -311,19 +311,50 @@ func (api *API) GetTransformationSchema() http.HandlerFunc {
 			schemaType = "output"
 		}
 
-		// Get schema from database
-		schemaData, err := api.Services.Storage.GetDatasetSchema(r.Context(), tenantID, datasetID, schemaType)
+		// Get dataset configuration to check if enabled
+		dataset, err := api.Services.Storage.GetDataset(r.Context(), tenantID, datasetID)
+		if err != nil {
+			log.Errorf("Failed to get dataset configuration: %v", err)
+			http.Error(w, "Failed to retrieve dataset configuration", http.StatusInternalServerError)
+			return
+		}
+
+		datasetEnabled := dataset != nil && dataset.Active
+
+		// Get schema with metadata from database
+		schemaMetadata, err := api.Services.Storage.GetDatasetSchemaWithMetadata(r.Context(), tenantID, datasetID, schemaType)
 		if err != nil {
 			log.Errorf("Failed to get dataset schema: %v", err)
 			http.Error(w, "Failed to retrieve schema", http.StatusInternalServerError)
 			return
 		}
 
-		if schemaData == nil {
-			// No schema cached yet
+		// Build response with metadata
+		type SchemaResponse struct {
+			Schema           interface{} `json:"schema,omitempty"`
+			Samples          []interface{} `json:"samples,omitempty"`
+			SchemaUpdatedAt  *time.Time  `json:"schema_updated_at,omitempty"`
+			DatasetEnabled   bool        `json:"dataset_enabled"`
+			LastBatchTime    *time.Time  `json:"last_batch_time,omitempty"`
+			SchemaAgeSeconds *int64      `json:"schema_age_seconds,omitempty"`
+			Error            string      `json:"error,omitempty"`
+		}
+
+		if schemaMetadata == nil {
+			// No schema cached yet - differentiate based on dataset enabled status
+			response := SchemaResponse{
+				DatasetEnabled: datasetEnabled,
+			}
+
+			if !datasetEnabled {
+				response.Error = "Pipeline not configured. Please configure the pipeline for this dataset."
+			} else {
+				response.Error = "Schema not available yet. Piper will submit schema after processing the first batch."
+			}
+
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte(`{"error":"Schema not available yet. Piper will submit schema after processing the first batch."}`)) // #nosec G104
+			json.NewEncoder(w).Encode(response) // #nosec G104
 			return
 		}
 
@@ -335,14 +366,30 @@ func (api *API) GetTransformationSchema() http.HandlerFunc {
 			samples = []storage.DatasetSample{}
 		}
 
-		// Build response matching expected format
-		type SchemaResponse struct {
-			Schema  interface{}     `json:"schema"`
-			Samples []interface{}   `json:"samples"`
+		// Get latest batch processing time from metrics
+		var lastBatchTime *time.Time
+		endTime := time.Now()
+		startTime := endTime.Add(-7 * 24 * time.Hour) // Look back 7 days
+
+		metricsFilter := storage.MetricsQueryFilter{
+			TenantID:  tenantID,
+			DatasetID: datasetID,
+			StartTime: startTime,
+			EndTime:   endTime,
+			Component: "piper", // Filter for piper component
+			Limit:     1,       // Only need the most recent
+		}
+
+		metrics, err := api.Services.Storage.QueryDatasetMetrics(r.Context(), metricsFilter)
+		if err != nil {
+			log.Debugf("Failed to query dataset metrics: %v", err)
+			// Continue without last batch time
+		} else if len(metrics) > 0 {
+			lastBatchTime = &metrics[0].RecordedAt
 		}
 
 		var schema interface{}
-		if err := json.Unmarshal(schemaData, &schema); err != nil {
+		if err := json.Unmarshal(schemaMetadata.SchemaData, &schema); err != nil {
 			log.Errorf("Failed to unmarshal schema: %v", err)
 			http.Error(w, "Failed to parse schema", http.StatusInternalServerError)
 			return
@@ -354,9 +401,20 @@ func (api *API) GetTransformationSchema() http.HandlerFunc {
 			sampleData = append(sampleData, s.SampleData)
 		}
 
+		// Calculate schema age in seconds if we have last batch time
+		var schemaAgeSeconds *int64
+		if lastBatchTime != nil && !schemaMetadata.UpdatedAt.IsZero() {
+			ageSeconds := int64(lastBatchTime.Sub(schemaMetadata.UpdatedAt).Seconds())
+			schemaAgeSeconds = &ageSeconds
+		}
+
 		response := SchemaResponse{
-			Schema:  schema,
-			Samples: sampleData,
+			Schema:           schema,
+			Samples:          sampleData,
+			SchemaUpdatedAt:  &schemaMetadata.UpdatedAt,
+			DatasetEnabled:   datasetEnabled,
+			LastBatchTime:    lastBatchTime,
+			SchemaAgeSeconds: schemaAgeSeconds,
 		}
 
 		w.Header().Set("Content-Type", "application/json")

@@ -42,6 +42,12 @@ func (s *PostgreSQLStorage) AcquireFileLock(ctx context.Context, lock *PiperFile
 	).Scan(&lock.LockID)
 
 	if err == sql.ErrNoRows {
+		// Lock already exists - query to get who holds it
+		existingLock, checkErr := s.CheckFileLock(ctx, lock.TenantID, lock.DatasetID, lock.FileKey)
+		if checkErr == nil && existingLock != nil {
+			return fmt.Errorf("file already locked by %s (acquired at %s)",
+				existingLock.LockedBy, existingLock.LockTimestamp.Format(time.RFC3339))
+		}
 		return fmt.Errorf("file already locked")
 	}
 	if err != nil {

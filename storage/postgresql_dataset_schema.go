@@ -42,6 +42,33 @@ func (s *PostgreSQLStorage) UpsertDatasetSchema(ctx context.Context, tenantID, d
 	return nil
 }
 
+// GetDatasetSchemaWithMetadata retrieves the cached schema with metadata for a dataset
+func (s *PostgreSQLStorage) GetDatasetSchemaWithMetadata(ctx context.Context, tenantID, datasetID, schemaType string) (*DatasetSchema, error) {
+	query := `
+		SELECT id, tenant_id, dataset_id, schema_type, schema_data, updated_at
+		FROM dataset_schema
+		WHERE tenant_id = $1 AND dataset_id = $2 AND schema_type = $3
+	`
+
+	var schema DatasetSchema
+	err := s.db.QueryRowContext(ctx, query, tenantID, datasetID, schemaType).Scan(
+		&schema.ID,
+		&schema.TenantID,
+		&schema.DatasetID,
+		&schema.SchemaType,
+		&schema.SchemaData,
+		&schema.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil // No schema cached
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dataset schema: %w", err)
+	}
+
+	return &schema, nil
+}
+
 // GetDatasetSchema retrieves the cached schema for a dataset
 func (s *PostgreSQLStorage) GetDatasetSchema(ctx context.Context, tenantID, datasetID, schemaType string) ([]byte, error) {
 	query := `

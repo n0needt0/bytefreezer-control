@@ -469,6 +469,7 @@ type Storage interface {
 	// Dataset Schema and Sample operations
 	UpsertDatasetSchema(ctx context.Context, tenantID, datasetID, schemaType string, schema interface{}) error
 	GetDatasetSchema(ctx context.Context, tenantID, datasetID, schemaType string) ([]byte, error)
+	GetDatasetSchemaWithMetadata(ctx context.Context, tenantID, datasetID, schemaType string) (*DatasetSchema, error)
 	UpsertDatasetSamples(ctx context.Context, tenantID, datasetID, sampleType string, samples []DatasetSample, keepCount int) error
 	GetDatasetSamples(ctx context.Context, tenantID, datasetID, sampleType string, limit int) ([]DatasetSample, error)
 

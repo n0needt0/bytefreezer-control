@@ -20,6 +20,7 @@ func (api *API) CreatePiperTransformationJob() usecase.Interactor {
 		JobType     storage.PiperTransformationJobType  `json:"job_type" required:"true"`
 		Status      storage.PiperJobStatus              `json:"status" required:"true"`
 		ProcessorID string                              `json:"processor_id,omitempty"`
+		Priority    int                                 `json:"priority" default:"0"`
 		Request     map[string]interface{}              `json:"request,omitempty"`
 		TTLHours    int                                 `json:"ttl_hours" default:"24"`
 	}
@@ -33,6 +34,12 @@ func (api *API) CreatePiperTransformationJob() usecase.Interactor {
 		now := time.Now()
 		ttl := now.Add(time.Duration(input.TTLHours) * time.Hour)
 
+		// Set priority to 10 for test jobs (instant feedback with 10 samples)
+		priority := input.Priority
+		if input.JobType == storage.PiperTransformationJobTypeTest {
+			priority = 10
+		}
+
 		job := &storage.PiperTransformationJob{
 			JobID:       input.JobID,
 			TenantID:    input.TenantID,
@@ -40,6 +47,7 @@ func (api *API) CreatePiperTransformationJob() usecase.Interactor {
 			JobType:     input.JobType,
 			Status:      input.Status,
 			ProcessorID: input.ProcessorID,
+			Priority:    priority,
 			Request:     input.Request,
 			CreatedAt:   now,
 			UpdatedAt:   now,

@@ -563,9 +563,9 @@ func (s *PostgreSQLStorage) GetParquetMetadataSummary(ctx context.Context, tenan
 // CreatePiperTransformationJob creates a new transformation job
 func (s *PostgreSQLStorage) CreatePiperTransformationJob(ctx context.Context, job *PiperTransformationJob) error {
 	query := `INSERT INTO piper_transformation_jobs
-		(job_id, tenant_id, dataset_id, job_type, status, processor_id, request, result,
+		(job_id, tenant_id, dataset_id, job_type, status, processor_id, priority, request, result,
 		error_message, created_at, updated_at, started_at, completed_at, ttl)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`
 
 	requestJSON, err := sonic.Marshal(job.Request)
 	if err != nil {
@@ -579,14 +579,14 @@ func (s *PostgreSQLStorage) CreatePiperTransformationJob(ctx context.Context, jo
 
 	_, err = s.db.ExecContext(ctx, query,
 		job.JobID, job.TenantID, job.DatasetID, job.JobType, job.Status,
-		job.ProcessorID, requestJSON, resultJSON, job.ErrorMsg,
+		job.ProcessorID, job.Priority, requestJSON, resultJSON, job.ErrorMsg,
 		job.CreatedAt, job.UpdatedAt, job.StartedAt, job.CompletedAt, job.TTL)
 
 	if err != nil {
 		return fmt.Errorf("failed to create transformation job: %w", err)
 	}
 
-	log.Infof("Created transformation job %s for %s/%s (type: %s)", job.JobID, job.TenantID, job.DatasetID, job.JobType)
+	log.Infof("Created transformation job %s for %s/%s (type: %s, priority: %d)", job.JobID, job.TenantID, job.DatasetID, job.JobType, job.Priority)
 	return nil
 }
 
@@ -611,12 +611,12 @@ func (s *PostgreSQLStorage) ClaimPiperTransformationJob(ctx context.Context, pro
 	}
 	defer tx.Rollback()
 
-	// Find oldest pending job matching the job types
-	query := `SELECT job_id, tenant_id, dataset_id, job_type, status, processor_id, request, result,
+	// Find highest priority pending job matching the job types
+	query := `SELECT job_id, tenant_id, dataset_id, job_type, status, processor_id, priority, request, result,
 		error_message, created_at, updated_at, started_at, completed_at, ttl
 		FROM piper_transformation_jobs
 		WHERE status = 'pending' AND job_type = ANY($1) AND ttl > NOW()
-		ORDER BY created_at ASC
+		ORDER BY priority DESC, created_at ASC
 		LIMIT 1
 		FOR UPDATE SKIP LOCKED`
 
@@ -629,7 +629,7 @@ func (s *PostgreSQLStorage) ClaimPiperTransformationJob(ctx context.Context, pro
 
 	err = tx.QueryRowContext(ctx, query, pq.Array(jobTypeStrings)).Scan(
 		&job.JobID, &job.TenantID, &job.DatasetID, &job.JobType, &job.Status,
-		&processorIDNullable, &requestJSON, &resultJSON, &errorMsgNullable,
+		&processorIDNullable, &job.Priority, &requestJSON, &resultJSON, &errorMsgNullable,
 		&job.CreatedAt, &job.UpdatedAt, &startedAtNullable, &completedAtNullable, &job.TTL)
 
 	if err == sql.ErrNoRows {

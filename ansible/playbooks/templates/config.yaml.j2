@@ -79,5 +79,11 @@ services:
   receiver_url: "{{ config.services.receiver_url | default('') }}"
   packer_url: "{{ config.services.packer_url | default('') }}"
 
+# AI configuration (optional - requires Claude API key)
+ai:
+  enabled: {{ config.ai.enabled | default(false) | lower }}
+  api_key: "{{ config.ai.api_key | default('') }}"
+  catalog_path: "{{ config.ai.catalog_path | default('/var/lib/bytefreezer-control/piper_plugin_catalog.md') }}"
+
 # Development mode
 dev: {{ config.dev | lower }}

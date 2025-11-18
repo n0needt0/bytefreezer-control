@@ -109,6 +109,12 @@ config:
     timeout_seconds: 10  # HTTP timeout for health operations
     register_on_startup: true  # Register service instance on startup
 
+  # AI configuration (optional - requires Claude API key)
+  ai:
+    enabled: false  # Enable AI pipeline generation
+    api_key: ""     # Claude API key (set via environment variable for production)
+    catalog_path: "/var/lib/bytefreezer-control/piper_plugin_catalog.md"  # Path to transformation plugin catalog on deployed system
+
   # Development mode
   dev: true  # Enable dev mode for browser testing
 

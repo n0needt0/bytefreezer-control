@@ -292,6 +292,16 @@ func (api *API) NewRouter() *web.Service {
 	service.Post("/api/v1/activity/receiver/throughput", api.RecordReceiverThroughput())
 	service.Get("/api/v1/activity/receiver/throughput", api.GetReceiverThroughput())
 
+	// ====================================================================================
+	// AI ASSISTANT ENDPOINTS (for AI-assisted pipeline configuration)
+	// ====================================================================================
+
+	// AI pipeline generation endpoints
+	service.Post("/api/v1/ai/pipeline/generate", api.GenerateAIPipeline())
+	service.Post("/api/v1/ai/pipeline/validate", api.ValidateAIPipeline())
+	service.Post("/api/v1/ai/catalog/refresh", api.RefreshAICatalog())
+	service.Get("/api/v1/ai/chat/history", api.GetAIChatHistory())
+
 	// API documentation
 	service.Docs("/v1/docs", swgui.New)
 

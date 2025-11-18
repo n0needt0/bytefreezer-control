@@ -20,6 +20,7 @@ type Config struct {
 	RateLimit      RateLimitConfig      `yaml:"rate_limit"`
 	HealthReporting HealthReportingConfig `yaml:"health_reporting"`
 	Services       ServicesConfig       `yaml:"services"`
+	AI             AIConfig             `yaml:"ai"`
 	Dev            bool                 `yaml:"dev"`
 
 	// Initialized components (set at runtime)
@@ -103,6 +104,12 @@ type ServicesConfig struct {
 	PiperOnPremURL   string `yaml:"piper_onprem_url"`   // Piper service URL for on-prem deployments
 	ReceiverURL      string `yaml:"receiver_url"`       // Receiver service URL for health checks
 	PackerURL        string `yaml:"packer_url"`         // Packer service URL for health checks (optional)
+}
+
+type AIConfig struct {
+	Enabled     bool   `yaml:"enabled"`      // Enable AI-assisted pipeline configuration
+	APIKey      string `yaml:"api_key"`      // Claude API key
+	CatalogPath string `yaml:"catalog_path"` // Path to plugin catalog file
 }
 
 // LoadConfig loads configuration from file and environment variables

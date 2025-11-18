@@ -76,5 +76,11 @@ services:
   receiver_url: "http://192.168.86.103:8081"  # Receiver service URL (tp3)
   packer_url: ""                              # Packer service URL (optional)
 
+# AI-assisted pipeline configuration
+ai:
+  enabled: false  # Enable AI pipeline generation (requires Claude API key)
+  api_key: ""     # Claude API key (set via environment variable CLAUDE_API_KEY for production)
+  catalog_path: "docs/piper_plugin_catalog.md"  # Path to transformation plugin catalog (relative to binary location)
+
 # Development mode
 dev: true  # Enable dev mode for browser testing

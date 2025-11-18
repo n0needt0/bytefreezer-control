@@ -23,6 +23,7 @@ type Services struct {
 	ErrorReporting        *ErrorReportingService  // Error reporting service
 	OperationTracking     *OperationTrackingService // Operation/activity tracking service
 	ReceiverThroughput    *ReceiverThroughputService // Receiver throughput tracking service
+	AIPipeline            *AIPipelineService      // AI-assisted pipeline configuration service
 	Stats                 *ControlStats
 	mutex                 sync.RWMutex
 }
@@ -175,6 +176,18 @@ func NewServices(config *config.Config) *Services {
 				services.DatasetTestingService.Start()
 				log.Info("Dataset testing service initialized and started")
 			}
+		}
+	}
+
+	// Initialize AI pipeline service if enabled
+	if config.AI.Enabled {
+		if config.AI.APIKey == "" {
+			log.Warn("AI service enabled but no API key configured")
+		} else if config.AI.CatalogPath == "" {
+			log.Warn("AI service enabled but no catalog path configured")
+		} else {
+			services.AIPipeline = NewAIPipelineService(config.AI.APIKey, config.AI.CatalogPath)
+			log.Infof("AI pipeline service initialized with catalog: %s", config.AI.CatalogPath)
 		}
 	}
 

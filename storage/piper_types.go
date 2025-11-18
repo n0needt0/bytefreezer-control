@@ -29,6 +29,7 @@ type PiperTransformationJob struct {
 	JobType     PiperTransformationJobType `json:"job_type"`
 	Status      PiperJobStatus             `json:"status"`
 	ProcessorID string                     `json:"processor_id,omitempty"` // Instance that claimed the job
+	Priority    int                        `json:"priority"`               // Job priority: 0 (normal), 10 (test with 10 samples)
 	Request     map[string]interface{}     `json:"request,omitempty"`      // Job-specific request data
 	Result      map[string]interface{}     `json:"result,omitempty"`       // Job-specific result data
 	ErrorMsg    string                     `json:"error_message,omitempty"`

@@ -1,5 +1,4 @@
 # Instructions for Claude - ByteFreezer Project
-
 ## Project Overview
 This is part of the ByteFreezer ecosystem - a comprehensive data ingestion, processing, and analytics platform. Each component serves a specific purpose in the data pipeline.
 

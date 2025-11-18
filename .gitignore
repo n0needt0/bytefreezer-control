@@ -34,5 +34,3 @@ CLAUDE.md
 *.DS_Store
 
 distribution/docker/bytefreezer-cache
-# Ignore built catalog in dist
-ansible/playbooks/dist/*.md

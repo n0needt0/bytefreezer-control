@@ -115,7 +115,7 @@ config:
 
   # AI configuration (optional - requires Claude API key from root-level variable)
   ai:
-    enabled: false  # Enable AI pipeline generation
+    enabled: true  # Enable AI pipeline generation
     catalog_path: "/var/lib/bytefreezer-control/piper_plugin_catalog.md"  # Path to transformation plugin catalog on deployed system
 
   # Development mode

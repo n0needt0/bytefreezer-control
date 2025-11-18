@@ -41,6 +41,10 @@ if [[ ! -f "$ANSIBLE_DIST_DIR/$PROJECT_NAME" ]]; then
     exit 1
 fi
 
+# Copy AI plugin catalog to dist
+echo "Copying AI plugin catalog..."
+cp "$SCRIPT_DIR/docs/piper_plugin_catalog.md" "$ANSIBLE_DIST_DIR/piper_plugin_catalog.md"
+
 # Test binary
 echo "Testing binary..."
 "$ANSIBLE_DIST_DIR/$PROJECT_NAME" --version

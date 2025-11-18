@@ -32,12 +32,17 @@ RUN addgroup -g 1001 -S appgroup && \
 # Set working directory
 WORKDIR /app
 
+# Create config directory
+RUN mkdir -p /etc/bytefreezer-control
+
 # Copy binary from builder stage
 COPY --from=builder /app/bytefreezer-control_unix ./bytefreezer-control
 COPY --from=builder /app/config.yaml ./config.yaml
+COPY --from=builder /app/docs/piper_plugin_catalog.md /etc/bytefreezer-control/piper_plugin_catalog.md
 
-# Change ownership of the app directory
-RUN chown -R appuser:appgroup /app
+# Change ownership of the app directory and config
+RUN chown -R appuser:appgroup /app && \
+    chown -R appuser:appgroup /etc/bytefreezer-control
 
 # Switch to non-root user
 USER appuser

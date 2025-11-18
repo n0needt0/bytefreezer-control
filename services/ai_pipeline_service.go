@@ -346,10 +346,13 @@ func (s *AIPipelineService) parseClaudeResponse(claudeResp *ClaudeAPIResponse, r
 			jsonStr := fullText[jsonStart : jsonStart+jsonEnd]
 			jsonStr = strings.TrimSpace(jsonStr)
 
+			log.Debugf("AI extracted JSON config: %s", jsonStr)
+
 			// Try to parse as pipeline config
 			var parsed PipelineConfiguration
 			if err := json.Unmarshal([]byte(jsonStr), &parsed); err != nil {
 				validationError = fmt.Sprintf("JSON parsing error: %v", err)
+				log.Warnf("AI pipeline JSON parsing failed: %v", err)
 			} else {
 				// Set tenant and dataset from request
 				parsed.TenantID = req.TenantID
@@ -358,8 +361,13 @@ func (s *AIPipelineService) parseClaudeResponse(claudeResp *ClaudeAPIResponse, r
 					parsed.Version = "1.0.0"
 				}
 				config = &parsed
+				log.Infof("AI generated pipeline with %d filters", len(parsed.Filters))
 			}
+		} else {
+			log.Warnf("AI response has ```json start but no closing ```")
 		}
+	} else {
+		log.Warnf("AI response does not contain ```json code block")
 	}
 
 	// Extract explanation (text before JSON block)

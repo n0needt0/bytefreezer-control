@@ -114,7 +114,7 @@ config:
     register_on_startup: true  # Register service instance on startup
 
   # AI configuration (optional - requires Claude API key from root-level variable)
-  ai:
+  ai:`
     enabled: true  # Enable AI pipeline generation
     catalog_path: "/etc/bytefreezer-control/piper_plugin_catalog.md"  # Path to transformation plugin catalog on deployed system
 

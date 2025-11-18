@@ -202,6 +202,7 @@ func (s *AIPipelineService) buildSystemPrompt(req *GeneratePipelineRequest) stri
 	prompt.WriteString("## Important Guidelines\n\n")
 	prompt.WriteString("- Filter order matters: parse before enrich, filter early for performance\n")
 	prompt.WriteString("- Use specific patterns instead of wildcards when possible\n")
+	prompt.WriteString("- Always set \"enabled\": true for all filters in the configuration\n")
 	prompt.WriteString("- Always include explanatory comments for complex transformations\n")
 	prompt.WriteString("- Validate JSON syntax before suggesting configurations\n")
 	prompt.WriteString("- Consider error handling and edge cases\n")

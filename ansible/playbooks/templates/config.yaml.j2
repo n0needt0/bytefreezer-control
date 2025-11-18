@@ -83,7 +83,7 @@ services:
 ai:
   enabled: {{ config.ai.enabled | default(false) | lower }}
   api_key: "{{ claude_api_key | default('') }}"
-  catalog_path: "{{ config.ai.catalog_path | default('/var/lib/bytefreezer-control/piper_plugin_catalog.md') }}"
+  catalog_path: "{{ config.ai.catalog_path | default('/etc/bytefreezer-control/piper_plugin_catalog.md') }}"
 
 # Development mode
 dev: {{ config.dev | lower }}

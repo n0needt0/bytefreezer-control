@@ -69,7 +69,7 @@
     - name: Copy AI plugin catalog
       ansible.builtin.copy:
         src: "{{ playbook_dir }}/../docs/piper_plugin_catalog.md"
-        dest: "{{ paths.data_dir }}/piper_plugin_catalog.md"
+        dest: "{{ paths.config_dir }}/piper_plugin_catalog.md"
         owner: root
         group: root
         mode: '0644'

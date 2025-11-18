@@ -10,6 +10,10 @@ version: "{{ bytefreezer_control_version | default('latest') }}"
 force_reinstall: false
 enable_debug_logging: false
 
+# Claude API Key (Set via AWX survey/credential - NOT stored in git)
+# In AWX: Create survey variable named 'claude_api_key' or use AWX credential injection
+claude_api_key: "{{ claude_api_key | default('') }}"
+
 # Service configuration
 service:
   name: "bytefreezer-control"
@@ -109,10 +113,9 @@ config:
     timeout_seconds: 10  # HTTP timeout for health operations
     register_on_startup: true  # Register service instance on startup
 
-  # AI configuration (optional - requires Claude API key)
+  # AI configuration (optional - requires Claude API key from root-level variable)
   ai:
     enabled: false  # Enable AI pipeline generation
-    api_key: ""     # Claude API key (set via environment variable for production)
     catalog_path: "/var/lib/bytefreezer-control/piper_plugin_catalog.md"  # Path to transformation plugin catalog on deployed system
 
   # Development mode

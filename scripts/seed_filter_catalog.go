@@ -532,14 +532,35 @@ func seedFilters(ctx context.Context, store storage.Storage, version string) err
 			Category:    "utility",
 			Purpose:     "Convert all object keys to uppercase",
 			Parameters: []storage.FilterParameter{
-				{Name: "source_field", Type: "string", Required: false, Description: "Specific field to operate on"},
+				{Name: "source_field", Type: "array or string", Required: false, Description: "Array of fields to operate on, single field name, \"*\" for all fields, or empty/omitted for entire record"},
 				{Name: "recursive", Type: "boolean", Required: false, Default: true, Description: "Recursively uppercase nested objects"},
 			},
 			Examples: []storage.FilterExample{
 				{
-					Description: "Uppercase all keys recursively",
+					Description: "Uppercase all keys in entire record",
 					Config: map[string]interface{}{
 						"recursive": true,
+					},
+				},
+				{
+					Description: "Uppercase keys in specific field",
+					Config: map[string]interface{}{
+						"source_field": "metadata",
+						"recursive":    true,
+					},
+				},
+				{
+					Description: "Uppercase keys in multiple fields",
+					Config: map[string]interface{}{
+						"source_field": []string{"metadata", "context"},
+						"recursive":    true,
+					},
+				},
+				{
+					Description: "Apply to all fields (same as omitting source_field)",
+					Config: map[string]interface{}{
+						"source_field": "*",
+						"recursive":    true,
 					},
 				},
 			},

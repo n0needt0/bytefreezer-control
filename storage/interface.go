@@ -473,6 +473,14 @@ type Storage interface {
 	UpsertDatasetSamples(ctx context.Context, tenantID, datasetID, sampleType string, samples []DatasetSample, keepCount int) error
 	GetDatasetSamples(ctx context.Context, tenantID, datasetID, sampleType string, limit int) ([]DatasetSample, error)
 
+	// Piper Filter Catalog operations
+	UpsertPiperFilter(ctx context.Context, filter *PiperFilter) error
+	GetPiperFilter(ctx context.Context, filterType string) (*PiperFilter, error)
+	ListPiperFilters(ctx context.Context) ([]*PiperFilter, error)
+	ListPiperFiltersByCategory(ctx context.Context, category string) ([]*PiperFilter, error)
+	DeletePiperFilter(ctx context.Context, filterType string) error
+	GetPiperFilterCatalog(ctx context.Context, format string) (interface{}, error) // format: "ui", "ai", or empty for full
+
 	// Utility operations
 	HealthCheck(ctx context.Context) error
 	Migrate(ctx context.Context) error
@@ -527,6 +535,35 @@ type MigrationOptions struct {
 	TargetVersion int  `json:"target_version"`
 	DryRun        bool `json:"dry_run"`
 	Force         bool `json:"force"`
+}
+
+// FilterParameter represents a configuration parameter for a filter
+type FilterParameter struct {
+	Name        string      `json:"name"`
+	Type        string      `json:"type"` // string, int, bool, float, array, object
+	Required    bool        `json:"required"`
+	Default     interface{} `json:"default,omitempty"`
+	Description string      `json:"description"`
+	Options     []string    `json:"options,omitempty"` // For enum-like parameters
+}
+
+// FilterExample represents an example configuration for a filter
+type FilterExample struct {
+	Description string                 `json:"description"`
+	Config      map[string]interface{} `json:"config"`
+}
+
+// PiperFilter represents a piper filter catalog entry
+type PiperFilter struct {
+	FilterType  string            `json:"filter_type" db:"filter_type"`
+	DisplayName string            `json:"display_name" db:"display_name"`
+	Category    string            `json:"category" db:"category"`
+	Purpose     string            `json:"purpose" db:"purpose"`
+	Parameters  []FilterParameter `json:"parameters" db:"parameters"`
+	Examples    []FilterExample   `json:"examples" db:"examples"`
+	Version     string            `json:"version,omitempty" db:"version"`
+	UpdatedAt   time.Time         `json:"updated_at" db:"updated_at"`
+	CreatedAt   time.Time         `json:"created_at" db:"created_at"`
 }
 
 // Migrator interface for database migrations

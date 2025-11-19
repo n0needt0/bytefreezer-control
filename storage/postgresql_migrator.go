@@ -274,6 +274,11 @@ func (m *PostgreSQLMigrator) getAllMigrations() []Migration {
 			Name:        "error_tracking_upsert_func",
 			Description: "Add upsert function implementation for system_errors",
 		},
+		{
+			Version:     15,
+			Name:        "piper_filter_catalog",
+			Description: "Create piper filter catalog table for storing filter types, parameters, and examples",
+		},
 	}
 }
 
@@ -814,6 +819,44 @@ CREATE INDEX IF NOT EXISTS idx_system_errors_sample_gin ON system_errors USING G
 	case 14:
 		return `CREATE OR REPLACE FUNCTION upsert_system_error(p_error_hash VARCHAR(64), p_error_type VARCHAR(100), p_component VARCHAR(50), p_tenant_id VARCHAR(255), p_dataset_id VARCHAR(255), p_error_message TEXT, p_error_sample JSONB, p_severity VARCHAR(20), p_metadata JSONB) RETURNS VOID AS $func$ DECLARE v_occurrence_count BIGINT; v_sample_rate FLOAT; v_should_sample BOOLEAN; BEGIN SELECT occurrence_count, sample_rate INTO v_occurrence_count, v_sample_rate FROM system_errors WHERE error_hash = p_error_hash; IF FOUND THEN IF v_occurrence_count >= 10000 THEN v_sample_rate := 0.001; ELSIF v_occurrence_count >= 1000 THEN v_sample_rate := 0.01; ELSIF v_occurrence_count >= 100 THEN v_sample_rate := 0.1; ELSE v_sample_rate := 1.0; END IF; v_should_sample := (random() <= v_sample_rate); UPDATE system_errors SET occurrence_count = occurrence_count + 1, last_seen = NOW(), sample_rate = v_sample_rate, samples_collected = CASE WHEN v_should_sample THEN samples_collected + 1 ELSE samples_collected END, samples_dropped = CASE WHEN v_should_sample THEN samples_dropped ELSE samples_dropped + 1 END, error_sample = CASE WHEN v_should_sample THEN p_error_sample ELSE error_sample END, metadata = CASE WHEN v_should_sample AND p_metadata IS NOT NULL THEN p_metadata ELSE metadata END WHERE error_hash = p_error_hash; ELSE INSERT INTO system_errors (error_hash, error_type, component, tenant_id, dataset_id, error_message, error_sample, severity, metadata, occurrence_count, sample_rate, samples_collected, samples_dropped) VALUES (p_error_hash, p_error_type, p_component, p_tenant_id, p_dataset_id, p_error_message, p_error_sample, p_severity, p_metadata, 1, 1.0, 1, 0); END IF; END; $func$ LANGUAGE plpgsql`
 
+	case 15:
+		return `
+			-- Create piper_filter_catalog table
+			CREATE TABLE IF NOT EXISTS control_piper_filter_catalog (
+				filter_type VARCHAR(50) PRIMARY KEY,
+				display_name VARCHAR(100) NOT NULL,
+				category VARCHAR(50) NOT NULL,
+				purpose TEXT NOT NULL,
+				parameters JSONB NOT NULL DEFAULT '[]'::jsonb,
+				examples JSONB NOT NULL DEFAULT '[]'::jsonb,
+				version VARCHAR(20),
+				updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+				created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+			);
+
+			-- Add indexes for fast lookups
+			CREATE INDEX IF NOT EXISTS idx_piper_filter_catalog_category ON control_piper_filter_catalog(category);
+			CREATE INDEX IF NOT EXISTS idx_piper_filter_catalog_version ON control_piper_filter_catalog(version);
+			CREATE INDEX IF NOT EXISTS idx_piper_filter_catalog_updated ON control_piper_filter_catalog(updated_at DESC);
+
+			-- Add GIN index for JSONB parameter search
+			CREATE INDEX IF NOT EXISTS idx_piper_filter_catalog_parameters ON control_piper_filter_catalog USING GIN(parameters);
+
+			-- Create function to update updated_at timestamp
+			CREATE OR REPLACE FUNCTION update_piper_filter_catalog_updated_at()
+			RETURNS TRIGGER AS $func$
+			BEGIN
+				NEW.updated_at = NOW();
+				RETURN NEW;
+			END;
+			$func$ LANGUAGE plpgsql;
+
+			-- Create trigger for automatic timestamp updates
+			DROP TRIGGER IF EXISTS trigger_update_piper_filter_catalog_updated_at ON control_piper_filter_catalog;
+			CREATE TRIGGER trigger_update_piper_filter_catalog_updated_at
+				BEFORE UPDATE ON control_piper_filter_catalog
+				FOR EACH ROW
+				EXECUTE FUNCTION update_piper_filter_catalog_updated_at();`
 
 	default:
 		return ""
@@ -907,6 +950,17 @@ func (m *PostgreSQLMigrator) getRollbackSQL(version int) string {
 			ALTER TABLE dataset_metrics DROP COLUMN IF EXISTS output_bytes;
 			ALTER TABLE dataset_metrics DROP COLUMN IF EXISTS input_bytes;
 			ALTER TABLE dataset_metrics DROP COLUMN IF EXISTS component;`
+
+	case 15:
+		return `
+			-- Rollback migration 015: Drop piper filter catalog table and related objects
+			DROP TRIGGER IF EXISTS trigger_update_piper_filter_catalog_updated_at ON control_piper_filter_catalog;
+			DROP FUNCTION IF EXISTS update_piper_filter_catalog_updated_at();
+			DROP INDEX IF EXISTS idx_piper_filter_catalog_parameters;
+			DROP INDEX IF EXISTS idx_piper_filter_catalog_updated;
+			DROP INDEX IF EXISTS idx_piper_filter_catalog_version;
+			DROP INDEX IF EXISTS idx_piper_filter_catalog_category;
+			DROP TABLE IF EXISTS control_piper_filter_catalog CASCADE;`
 
 	default:
 		return ""

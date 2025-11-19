@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/n0needt0/bytefreezer-control/storage"
 	"github.com/n0needt0/go-goodies/log"
 	"github.com/swaggest/usecase"
@@ -66,22 +67,26 @@ func (api *API) CreateTransformationTest() usecase.Interactor {
 	}
 
 	u := usecase.NewInteractor(func(ctx context.Context, input Input, output *Output) error {
-		// Create transformation job
-		job := &storage.TransformationJob{
+		// Create transformation job in piper_transformation_jobs table
+		job := &storage.PiperTransformationJob{
+			JobID:     uuid.New().String(),
 			TenantID:  input.TenantID,
 			DatasetID: input.DatasetID,
-			JobType:   storage.TransformationJobTypeTest,
-			Status:    storage.JobStatusPending,
+			JobType:   storage.PiperTransformationJobTypeTest,
+			Status:    storage.PiperJobStatusPending,
+			Priority:  10, // Test jobs have priority 10
 			Request: map[string]interface{}{
 				"tenant_id":  input.TenantID,
 				"dataset_id": input.DatasetID,
 				"filters":    input.Filters,
 				"samples":    input.Samples,
 			},
-			TTL: time.Now().Add(1 * time.Hour), // 1 hour TTL
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			TTL:       time.Now().Add(1 * time.Hour), // 1 hour TTL
 		}
 
-		if err := api.Services.Storage.CreateTransformationJob(ctx, job); err != nil {
+		if err := api.Services.Storage.CreatePiperTransformationJob(ctx, job); err != nil {
 			log.Errorf("Failed to create transformation test job: %v", err)
 			return fmt.Errorf("failed to create transformation job: %w", err)
 		}
@@ -222,7 +227,7 @@ func (api *API) GetTransformationJobStatus() usecase.Interactor {
 	}
 
 	u := usecase.NewInteractor(func(ctx context.Context, input Input, output *Output) error {
-		job, err := api.Services.Storage.GetTransformationJob(ctx, input.JobID)
+		job, err := api.Services.Storage.GetPiperTransformationJob(ctx, input.JobID)
 		if err != nil {
 			log.Errorf("Failed to get transformation job %s: %v", input.JobID, err)
 			return fmt.Errorf("failed to get transformation job: %w", err)

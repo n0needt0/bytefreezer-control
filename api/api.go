@@ -301,7 +301,6 @@ func (api *API) NewRouter() *web.Service {
 	service.Get("/api/v1/filters/catalog", api.GetFilterCatalog())
 	service.Get("/api/v1/filters/{filterType}", api.GetFilter())
 	service.Post("/api/v1/filters", api.UpsertFilter())
-	service.Put("/api/v1/filters/{filterType}", api.UpsertFilter())
 	service.Delete("/api/v1/filters/{filterType}", api.DeleteFilter())
 
 	// ====================================================================================

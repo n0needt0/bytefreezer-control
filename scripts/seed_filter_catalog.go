@@ -4,12 +4,11 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"os"
-	"time"
 
-	"github.com/n0needt0/bytefreezer-control/config"
 	"github.com/n0needt0/bytefreezer-control/storage"
 	"github.com/n0needt0/go-goodies/log"
+	"gopkg.in/yaml.v3"
+	"os"
 )
 
 func main() {
@@ -20,14 +19,45 @@ func main() {
 
 	// Load configuration
 	log.Info("Loading configuration...")
-	conf, err := config.Load(*configFile)
+	configData, err := os.ReadFile(*configFile)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		log.Fatalf("Failed to read config file: %v", err)
+	}
+
+	type Config struct {
+		Database struct {
+			Host     string `yaml:"host"`
+			Port     int    `yaml:"port"`
+			Database string `yaml:"database"`
+			Username string `yaml:"username"`
+			Password string `yaml:"password"`
+			SSLMode  string `yaml:"ssl_mode"`
+		} `yaml:"database"`
+	}
+
+	var conf Config
+	if err := yaml.Unmarshal(configData, &conf); err != nil {
+		log.Fatalf("Failed to parse config: %v", err)
 	}
 
 	// Create storage backend
 	log.Info("Connecting to database...")
-	store, err := storage.NewPostgreSQLStorage(conf.Storage)
+
+	uri := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		conf.Database.Host,
+		conf.Database.Port,
+		conf.Database.Username,
+		conf.Database.Password,
+		conf.Database.Database,
+		conf.Database.SSLMode,
+	)
+
+	storageConfig := storage.Config{
+		Type: "postgresql",
+		URI:  uri,
+	}
+
+	store, err := storage.NewPostgreSQLStorage(storageConfig)
 	if err != nil {
 		log.Fatalf("Failed to create storage: %v", err)
 	}

@@ -489,6 +489,140 @@ func (api *API) GetTransformationSchema() http.HandlerFunc {
 	}
 }
 
+// GetTransformationJSONSchema returns a JSON Schema (draft-07) format schema
+func (api *API) GetTransformationJSONSchema() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Extract path parameters
+		tenantID := r.PathValue("tenantId")
+		datasetID := r.PathValue("datasetId")
+
+		// Schema type from query param (default to "output")
+		schemaType := r.URL.Query().Get("type")
+		if schemaType == "" {
+			schemaType = "output"
+		}
+
+		// Get dataset configuration
+		dataset, err := api.Services.Storage.GetDataset(r.Context(), tenantID, datasetID)
+		if err != nil {
+			log.Errorf("Failed to get dataset configuration: %v", err)
+			http.Error(w, "Failed to retrieve dataset configuration", http.StatusInternalServerError)
+			return
+		}
+
+		if dataset == nil || !dataset.Active {
+			http.Error(w, "Dataset not found or not active", http.StatusNotFound)
+			return
+		}
+
+		// Get schema with metadata from database
+		schemaMetadata, err := api.Services.Storage.GetDatasetSchemaWithMetadata(r.Context(), tenantID, datasetID, schemaType)
+		if err != nil {
+			log.Errorf("Failed to get dataset schema: %v", err)
+			http.Error(w, "Failed to retrieve schema", http.StatusInternalServerError)
+			return
+		}
+
+		if schemaMetadata == nil {
+			http.Error(w, "Schema not available yet", http.StatusNotFound)
+			return
+		}
+
+		// Parse schema data
+		var schemaData map[string]interface{}
+		if err := json.Unmarshal(schemaMetadata.SchemaData, &schemaData); err != nil {
+			log.Errorf("Failed to unmarshal schema: %v", err)
+			http.Error(w, "Failed to parse schema", http.StatusInternalServerError)
+			return
+		}
+
+		// Get samples for example values
+		samples, _ := api.Services.Storage.GetDatasetSamples(r.Context(), tenantID, datasetID, schemaType, 1)
+
+		// Map types to JSON Schema types
+		mapToJSONSchemaType := func(types []interface{}) interface{} {
+			if len(types) == 0 {
+				return []string{"string", "null"}
+			}
+
+			var schemaTypes []string
+			for _, t := range types {
+				if typeStr, ok := t.(string); ok {
+					switch typeStr {
+					case "string", "number", "boolean", "array", "object", "null":
+						schemaTypes = append(schemaTypes, typeStr)
+					default:
+						schemaTypes = append(schemaTypes, "string")
+					}
+				}
+			}
+
+			if len(schemaTypes) == 1 {
+				return schemaTypes[0]
+			}
+			return schemaTypes
+		}
+
+		// Build JSON Schema properties
+		properties := make(map[string]interface{})
+
+		if fieldsRaw, ok := schemaData["fields"]; ok {
+			if fieldsList, ok := fieldsRaw.([]interface{}); ok {
+				for _, fieldRaw := range fieldsList {
+					if field, ok := fieldRaw.(map[string]interface{}); ok {
+						fieldName, _ := field["name"].(string)
+						types, _ := field["types"].([]interface{})
+
+						fieldSchema := map[string]interface{}{
+							"type": mapToJSONSchemaType(types),
+						}
+
+						// Add example value from sample if available
+						if len(samples) > 0 {
+							if exampleVal, ok := samples[0].SampleData[fieldName]; ok {
+								fieldSchema["examples"] = []interface{}{exampleVal}
+							}
+						}
+
+						properties[fieldName] = fieldSchema
+					}
+				}
+			}
+		}
+
+		// Get total records count
+		var totalRecords int64
+		if sampleCount, ok := schemaData["sample_count"].(float64); ok {
+			totalRecords = int64(sampleCount)
+		}
+
+		// Create JSON Schema document
+		jsonSchema := map[string]interface{}{
+			"$schema":     "http://json-schema.org/draft-07/schema#",
+			"$id":         fmt.Sprintf("https://bytefreezer.io/schemas/%s/%s", tenantID, datasetID),
+			"title":       fmt.Sprintf("%s Dataset Schema", datasetID),
+			"description": fmt.Sprintf("Schema for %s/%s dataset", tenantID, datasetID),
+			"type":        "object",
+			"properties":  properties,
+			"additionalProperties": true,
+			"metadata": map[string]interface{}{
+				"tenant_id":         tenantID,
+				"dataset_id":        datasetID,
+				"schema_type":       schemaType,
+				"generated_at":      time.Now().Format(time.RFC3339),
+				"schema_updated_at": schemaMetadata.UpdatedAt.Format(time.RFC3339),
+				"total_fields":      len(properties),
+				"total_records":     totalRecords,
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/schema+json")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s-%s-schema.json", tenantID, datasetID))
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(jsonSchema) // #nosec G104
+	}
+}
+
 // getPiperURLForTenant gets the correct piper URL based on tenant's account deployment type
 func (api *API) getPiperURLForTenant(ctx context.Context, tenantID string) (string, error) {
 	// Get tenant to find account_id

@@ -151,6 +151,9 @@ func (api *API) NewRouter() *web.Service {
 	service.Router.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations/schema", func(w http.ResponseWriter, r *http.Request) {
 		corsMiddleware(authMiddleware(api.GetTransformationSchema())).ServeHTTP(w, r)
 	})
+	service.Router.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations/schema/json-schema", func(w http.ResponseWriter, r *http.Request) {
+		corsMiddleware(authMiddleware(api.GetTransformationJSONSchema())).ServeHTTP(w, r)
+	})
 	service.Router.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations/stats", func(w http.ResponseWriter, r *http.Request) {
 		corsMiddleware(authMiddleware(api.GetTransformationStats())).ServeHTTP(w, r)
 	})

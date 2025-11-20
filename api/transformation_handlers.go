@@ -124,22 +124,26 @@ func (api *API) CreateTransformationValidate() usecase.Interactor {
 	}
 
 	u := usecase.NewInteractor(func(ctx context.Context, input Input, output *Output) error {
-		// Create transformation job
-		job := &storage.TransformationJob{
+		// Create transformation job in piper_transformation_jobs table
+		job := &storage.PiperTransformationJob{
+			JobID:     uuid.New().String(),
 			TenantID:  input.TenantID,
 			DatasetID: input.DatasetID,
-			JobType:   storage.TransformationJobTypeValidate,
-			Status:    storage.JobStatusPending,
+			JobType:   storage.PiperTransformationJobTypeValidate,
+			Status:    storage.PiperJobStatusPending,
+			Priority:  8, // Validate jobs have priority 8
 			Request: map[string]interface{}{
 				"tenant_id":  input.TenantID,
 				"dataset_id": input.DatasetID,
 				"filters":    input.Filters,
 				"count":      input.Count,
 			},
-			TTL: time.Now().Add(1 * time.Hour), // 1 hour TTL
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			TTL:       time.Now().Add(1 * time.Hour), // 1 hour TTL
 		}
 
-		if err := api.Services.Storage.CreateTransformationJob(ctx, job); err != nil {
+		if err := api.Services.Storage.CreatePiperTransformationJob(ctx, job); err != nil {
 			log.Errorf("Failed to create transformation validate job: %v", err)
 			return fmt.Errorf("failed to create transformation job: %w", err)
 		}
@@ -177,22 +181,26 @@ func (api *API) CreateTransformationActivate() usecase.Interactor {
 	}
 
 	u := usecase.NewInteractor(func(ctx context.Context, input Input, output *Output) error {
-		// Create transformation job
-		job := &storage.TransformationJob{
+		// Create transformation job in piper_transformation_jobs table
+		job := &storage.PiperTransformationJob{
+			JobID:     uuid.New().String(),
 			TenantID:  input.TenantID,
 			DatasetID: input.DatasetID,
-			JobType:   storage.TransformationJobTypeActivate,
-			Status:    storage.JobStatusPending,
+			JobType:   storage.PiperTransformationJobTypeActivate,
+			Status:    storage.PiperJobStatusPending,
+			Priority:  5, // Activate jobs have priority 5
 			Request: map[string]interface{}{
 				"tenant_id":  input.TenantID,
 				"dataset_id": input.DatasetID,
 				"filters":    input.Filters,
 				"enabled":    input.Enabled,
 			},
-			TTL: time.Now().Add(1 * time.Hour), // 1 hour TTL
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			TTL:       time.Now().Add(1 * time.Hour), // 1 hour TTL
 		}
 
-		if err := api.Services.Storage.CreateTransformationJob(ctx, job); err != nil {
+		if err := api.Services.Storage.CreatePiperTransformationJob(ctx, job); err != nil {
 			log.Errorf("Failed to create transformation activate job: %v", err)
 			return fmt.Errorf("failed to create transformation job: %w", err)
 		}

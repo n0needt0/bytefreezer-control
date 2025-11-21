@@ -205,6 +205,30 @@ func (api *API) CreateTransformationActivate() usecase.Interactor {
 			return fmt.Errorf("failed to create transformation job: %w", err)
 		}
 
+		// Save to history if deploying
+		if input.Enabled {
+			now := time.Now()
+			history := &storage.TransformationHistory{
+				TenantID:   input.TenantID,
+				DatasetID:  input.DatasetID,
+				Config:     job.Request, // Includes filters, enabled, etc.
+				Deployed:   true,
+				DeployedAt: &now,
+				CreatedAt:  now,
+				Label:      "Deployed",
+			}
+
+			if err := api.Services.Storage.SaveTransformationHistory(ctx, history); err != nil {
+				log.Warnf("Failed to save transformation history for %s/%s: %v", input.TenantID, input.DatasetID, err)
+				// Don't fail the whole request if history save fails
+			} else {
+				// Cleanup old history entries, keep last 10
+				if err := api.Services.Storage.CleanupOldHistory(ctx, input.TenantID, input.DatasetID, 10); err != nil {
+					log.Warnf("Failed to cleanup old history for %s/%s: %v", input.TenantID, input.DatasetID, err)
+				}
+			}
+		}
+
 		log.Infof("Created transformation activate job %s for %s/%s", job.JobID, input.TenantID, input.DatasetID)
 
 		output.Response = TransformationJobResponse{
@@ -888,6 +912,61 @@ func (api *API) SubmitDatasetSchema() usecase.Interactor {
 
 		output.Success = true
 		output.Message = fmt.Sprintf("Stored schema and %d samples successfully", len(input.Samples))
+		return nil
+	})
+
+	return u
+}
+
+// GetTransformationHistory retrieves transformation configuration history
+func (api *API) GetTransformationHistory() usecase.Interactor {
+	type Input struct {
+		TenantID  string `path:"tenantId" required:"true"`
+		DatasetID string `path:"datasetId" required:"true"`
+		Limit     int    `query:"limit"`
+	}
+
+	type HistoryItem struct {
+		ID         int64                  `json:"id"`
+		Config     map[string]interface{} `json:"config"`
+		Deployed   bool                   `json:"deployed"`
+		DeployedAt *time.Time             `json:"deployed_at,omitempty"`
+		CreatedAt  time.Time              `json:"created_at"`
+		CreatedBy  string                 `json:"created_by,omitempty"`
+		Label      string                 `json:"label,omitempty"`
+	}
+
+	type Output struct {
+		History []HistoryItem `json:"history"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input Input, output *Output) error {
+		limit := input.Limit
+		if limit <= 0 {
+			limit = 10
+		}
+
+		histories, err := api.Services.Storage.GetTransformationHistory(ctx, input.TenantID, input.DatasetID, limit)
+		if err != nil {
+			log.Errorf("Failed to get transformation history for %s/%s: %v", input.TenantID, input.DatasetID, err)
+			return fmt.Errorf("failed to get transformation history: %w", err)
+		}
+
+		output.History = make([]HistoryItem, 0, len(histories))
+		for _, h := range histories {
+			item := HistoryItem{
+				ID:         h.ID,
+				Config:     h.Config,
+				Deployed:   h.Deployed,
+				DeployedAt: h.DeployedAt,
+				CreatedAt:  h.CreatedAt,
+				CreatedBy:  h.CreatedBy,
+				Label:      h.Label,
+			}
+			output.History = append(output.History, item)
+		}
+
+		log.Debugf("Retrieved %d transformation history entries for %s/%s", len(output.History), input.TenantID, input.DatasetID)
 		return nil
 	})
 

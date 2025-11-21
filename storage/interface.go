@@ -404,6 +404,11 @@ type Storage interface {
 	GetTransformationJob(ctx context.Context, jobID string) (*TransformationJob, error)
 	ListTransformationJobs(ctx context.Context, tenantID, datasetID string) ([]*TransformationJob, error)
 
+	// Transformation History operations
+	SaveTransformationHistory(ctx context.Context, history *TransformationHistory) error
+	GetTransformationHistory(ctx context.Context, tenantID, datasetID string, limit int) ([]*TransformationHistory, error)
+	CleanupOldHistory(ctx context.Context, tenantID, datasetID string, keepCount int) error
+
 	// Piper File Lock operations
 	AcquireFileLock(ctx context.Context, lock *PiperFileLock) error
 	ReleaseFileLock(ctx context.Context, tenantID, datasetID, fileKey, lockedBy string) error

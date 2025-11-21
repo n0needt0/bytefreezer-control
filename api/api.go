@@ -72,6 +72,9 @@ func (api *API) NewRouter() *web.Service {
 	// Health check endpoint (public)
 	service.Get("/api/v1/health", api.HealthCheck())
 
+	// API discovery endpoint (public)
+	service.Router.Get("/api/v1", api.GetAPIDiscovery())
+
 	// Authentication endpoints (public)
 	service.Post("/api/v1/login", api.Login())
 	service.Post("/api/v1/refresh", api.RefreshToken())
@@ -316,7 +319,18 @@ func (api *API) NewRouter() *web.Service {
 	service.Post("/api/v1/ai/catalog/refresh", api.RefreshAICatalog())
 	service.Get("/api/v1/ai/chat/history", api.GetAIChatHistory())
 
-	// API documentation
+	// ====================================================================================
+	// API DOCUMENTATION ENDPOINTS (for AI agents and external consumption)
+	// ====================================================================================
+
+	// Documentation index (lists available docs)
+	service.Router.Get("/api/v1/docs", api.GetAPIDocsIndex())
+
+	// AI Agent documentation endpoints (markdown format)
+	service.Router.Get("/api/v1/docs/ai-agent", api.GetAPIDocsForAI())
+	service.Router.Get("/api/v1/docs/ai-agent/quick-reference", api.GetAPIQuickReference())
+
+	// Swagger UI for interactive API exploration
 	service.Docs("/v1/docs", swgui.New)
 
 	// Root redirect to documentation

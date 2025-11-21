@@ -159,9 +159,13 @@ func ConditionalAuthMiddleware(authConfig config.AuthConfig) func(http.Handler) 
 // isPublicEndpoint checks if the endpoint should skip authentication
 func isPublicEndpoint(path string) bool {
 	publicEndpoints := []string{
+		"/api/v1",
 		"/api/v1/health",
 		"/api/v1/login",
 		"/api/v1/password-reset",
+		"/api/v1/docs",
+		"/api/v1/docs/ai-agent",
+		"/api/v1/docs/ai-agent/quick-reference",
 	}
 
 	// Check exact matches

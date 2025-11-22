@@ -127,13 +127,14 @@ func (s *OperationTrackingService) UpsertOperation(ctx context.Context, update *
 			operation_type, operation_id, status,
 			progress_current, progress_total, progress_unit, progress_message,
 			input_bytes, output_bytes, records_processed, error_count,
-			details, started_at, updated_at
+			details, started_at, updated_at, completed_at
 		) VALUES (
 			$1, $2, $3, $4, $5,
 			$6, $7, $8,
 			$9, $10, $11, $12,
 			$13, $14, $15, $16,
-			$17::jsonb, $18, NOW()
+			$17::jsonb, $18, NOW(),
+			CASE WHEN $8 IN ('completed', 'failed') THEN NOW() ELSE NULL END
 		)
 		ON CONFLICT (operation_id)
 		WHERE operation_id IS NOT NULL

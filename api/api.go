@@ -146,6 +146,7 @@ func (api *API) NewRouter() *web.Service {
 	service.Get("/api/v1/transformations/jobs/{jobId}", api.GetTransformationJobStatus())
 	service.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations/jobs", api.ListTransformationJobs())
 	service.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations/history", api.GetTransformationHistory())
+	service.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations", api.GetActiveTransformationConfig())
 
 	// Transformation read-only endpoints (proxy to piper - protected with auth and CORS)
 	corsMiddleware := middleware.CORSMiddleware()

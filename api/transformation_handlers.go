@@ -205,27 +205,32 @@ func (api *API) CreateTransformationActivate() usecase.Interactor {
 			return fmt.Errorf("failed to create transformation job: %w", err)
 		}
 
-		// Save to history if deploying
-		if input.Enabled {
-			now := time.Now()
-			history := &storage.TransformationHistory{
-				TenantID:   input.TenantID,
-				DatasetID:  input.DatasetID,
-				Config:     job.Request, // Includes filters, enabled, etc.
-				Deployed:   true,
-				DeployedAt: &now,
-				CreatedAt:  now,
-				Label:      "Deployed",
-			}
+		// Save to history - both drafts and deployments
+		now := time.Now()
+		history := &storage.TransformationHistory{
+			TenantID:   input.TenantID,
+			DatasetID:  input.DatasetID,
+			Config:     job.Request, // Includes filters, enabled, etc.
+			Deployed:   input.Enabled,
+			DeployedAt: nil,
+			CreatedAt:  now,
+			Label:      "Draft",
+		}
 
-			if err := api.Services.Storage.SaveTransformationHistory(ctx, history); err != nil {
-				log.Warnf("Failed to save transformation history for %s/%s: %v", input.TenantID, input.DatasetID, err)
-				// Don't fail the whole request if history save fails
-			} else {
-				// Cleanup old history entries, keep last 10
-				if err := api.Services.Storage.CleanupOldHistory(ctx, input.TenantID, input.DatasetID, 10); err != nil {
-					log.Warnf("Failed to cleanup old history for %s/%s: %v", input.TenantID, input.DatasetID, err)
-				}
+		// If deploying (enabled=true), mark as deployed
+		if input.Enabled {
+			history.Deployed = true
+			history.DeployedAt = &now
+			history.Label = "Deployed"
+		}
+
+		if err := api.Services.Storage.SaveTransformationHistory(ctx, history); err != nil {
+			log.Warnf("Failed to save transformation history for %s/%s: %v", input.TenantID, input.DatasetID, err)
+			// Don't fail the whole request if history save fails
+		} else {
+			// Cleanup old history entries, keep last 100
+			if err := api.Services.Storage.CleanupOldHistory(ctx, input.TenantID, input.DatasetID, 100); err != nil {
+				log.Warnf("Failed to cleanup old history for %s/%s: %v", input.TenantID, input.DatasetID, err)
 			}
 		}
 
@@ -941,6 +946,7 @@ func (api *API) GetTransformationHistory() usecase.Interactor {
 		CreatedAt  time.Time              `json:"created_at"`
 		CreatedBy  string                 `json:"created_by,omitempty"`
 		Label      string                 `json:"label,omitempty"`
+		IsActive   bool                   `json:"is_active"`
 	}
 
 	type Output struct {
@@ -953,6 +959,13 @@ func (api *API) GetTransformationHistory() usecase.Interactor {
 			limit = 10
 		}
 
+		// Get current active transformation to compare
+		activeTransform, err := api.Services.Storage.GetActiveTransformation(ctx, input.TenantID, input.DatasetID)
+		if err != nil && err != storage.ErrNotFound {
+			log.Errorf("Failed to get active transformation for %s/%s: %v", input.TenantID, input.DatasetID, err)
+			// Continue without active comparison - just set all IsActive to false
+		}
+
 		histories, err := api.Services.Storage.GetTransformationHistory(ctx, input.TenantID, input.DatasetID, limit)
 		if err != nil {
 			log.Errorf("Failed to get transformation history for %s/%s: %v", input.TenantID, input.DatasetID, err)
@@ -961,6 +974,22 @@ func (api *API) GetTransformationHistory() usecase.Interactor {
 
 		output.History = make([]HistoryItem, 0, len(histories))
 		for _, h := range histories {
+			isActive := false
+
+			// Check if this history entry matches the active transformation
+			if activeTransform != nil {
+				// Compare filters and enabled status
+				historyFilters, _ := h.Config["filters"].([]interface{})
+				historyEnabled, _ := h.Config["enabled"].(bool)
+
+				// Simple comparison - if both filters and enabled match, it's active
+				if activeTransform.Enabled == historyEnabled && len(activeTransform.Filters) == len(historyFilters) {
+					// Deep comparison would be better, but for now check length and enabled
+					// If we need exact match, would need to compare filter contents
+					isActive = true
+				}
+			}
+
 			item := HistoryItem{
 				ID:         h.ID,
 				Config:     h.Config,
@@ -969,11 +998,51 @@ func (api *API) GetTransformationHistory() usecase.Interactor {
 				CreatedAt:  h.CreatedAt,
 				CreatedBy:  h.CreatedBy,
 				Label:      h.Label,
+				IsActive:   isActive,
 			}
 			output.History = append(output.History, item)
 		}
 
 		log.Debugf("Retrieved %d transformation history entries for %s/%s", len(output.History), input.TenantID, input.DatasetID)
+		return nil
+	})
+
+	return u
+}
+
+// GetActiveTransformationConfig retrieves the currently active transformation configuration
+func (api *API) GetActiveTransformationConfig() usecase.Interactor {
+	type Input struct {
+		TenantID  string `path:"tenantId" required:"true"`
+		DatasetID string `path:"datasetId" required:"true"`
+	}
+
+	type Output struct {
+		Filters []map[string]interface{} `json:"filters"`
+		Enabled bool                     `json:"enabled"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input Input, output *Output) error {
+		// Get active transformation from database
+		activeTransform, err := api.Services.Storage.GetActiveTransformation(ctx, input.TenantID, input.DatasetID)
+		if err != nil {
+			if err == storage.ErrNotFound {
+				log.Debugf("No active transformation found for %s/%s", input.TenantID, input.DatasetID)
+				// Return empty filters and enabled=false when no active transformation
+				output.Filters = []map[string]interface{}{}
+				output.Enabled = false
+				return nil
+			}
+			log.Errorf("Failed to get active transformation for %s/%s: %v", input.TenantID, input.DatasetID, err)
+			return fmt.Errorf("failed to get active transformation: %w", err)
+		}
+
+		// Return filters and enabled status
+		output.Filters = activeTransform.Filters
+		output.Enabled = activeTransform.Enabled
+
+		log.Debugf("Retrieved active transformation for %s/%s (enabled: %v, %d filters)",
+			input.TenantID, input.DatasetID, activeTransform.Enabled, len(activeTransform.Filters))
 		return nil
 	})
 

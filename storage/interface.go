@@ -409,6 +409,15 @@ type Storage interface {
 	GetTransformationHistory(ctx context.Context, tenantID, datasetID string, limit int) ([]*TransformationHistory, error)
 	CleanupOldHistory(ctx context.Context, tenantID, datasetID string, keepCount int) error
 
+	// Active transformation operations
+	UpsertActiveTransformation(ctx context.Context, transformation *ActiveTransformation) error
+	GetActiveTransformation(ctx context.Context, tenantID, datasetID string) (*ActiveTransformation, error)
+
+	// Transformation stats operations
+	SaveTransformationStats(ctx context.Context, stats *TransformationStats) error
+	GetLatestTransformationStats(ctx context.Context, tenantID, datasetID string) (*TransformationStats, error)
+	CleanupOldTransformationStats(ctx context.Context, tenantID, datasetID string, keepCount int) error
+
 	// Piper File Lock operations
 	AcquireFileLock(ctx context.Context, lock *PiperFileLock) error
 	ReleaseFileLock(ctx context.Context, tenantID, datasetID, fileKey, lockedBy string) error

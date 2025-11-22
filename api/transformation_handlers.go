@@ -229,6 +229,31 @@ func (api *API) CreateTransformationActivate() usecase.Interactor {
 			}
 		}
 
+		// Store active transformation configuration
+		activeTransform := &storage.ActiveTransformation{
+			TenantID:    input.TenantID,
+			DatasetID:   input.DatasetID,
+			Enabled:     input.Enabled,
+			Filters:     make([]map[string]interface{}, 0, len(input.Filters)),
+			Version:     "1.0", // Version tracking can be enhanced later
+			ActivatedAt: time.Now(),
+		}
+
+		// Convert FilterConfig to map[string]interface{}
+		for _, filter := range input.Filters {
+			filterMap := map[string]interface{}{
+				"type":    filter.Type,
+				"config":  filter.Config,
+				"enabled": filter.Enabled,
+			}
+			activeTransform.Filters = append(activeTransform.Filters, filterMap)
+		}
+
+		if err := api.Services.Storage.UpsertActiveTransformation(ctx, activeTransform); err != nil {
+			log.Warnf("Failed to upsert active transformation for %s/%s: %v", input.TenantID, input.DatasetID, err)
+			// Don't fail the whole request if active transformation save fails
+		}
+
 		log.Infof("Created transformation activate job %s for %s/%s", job.JobID, input.TenantID, input.DatasetID)
 
 		output.Response = TransformationJobResponse{
@@ -691,13 +716,23 @@ func (api *API) GetTransformationStats() http.HandlerFunc {
 		tenantID := r.PathValue("tenantId")
 		datasetID := r.PathValue("datasetId")
 
-		// Query stats from database
-		query := `
-			SELECT tenant_id, dataset_id, enabled, filter_count, total_processed,
-			       success_count, error_count, skipped_count, avg_rows_per_sec, last_processed
-			FROM piper_transformation_stats
-			WHERE tenant_id = $1 AND dataset_id = $2`
+		// Get active transformation configuration (enabled status and filter count)
+		activeTransform, err := api.Services.Storage.GetActiveTransformation(r.Context(), tenantID, datasetID)
+		if err != nil {
+			log.Errorf("Failed to get active transformation: %v", err)
+			http.Error(w, "Failed to retrieve transformation configuration", http.StatusInternalServerError)
+			return
+		}
 
+		// Get latest transformation statistics (real metrics from piper)
+		latestStats, err := api.Services.Storage.GetLatestTransformationStats(r.Context(), tenantID, datasetID)
+		if err != nil {
+			log.Errorf("Failed to get latest transformation stats: %v", err)
+			http.Error(w, "Failed to retrieve transformation statistics", http.StatusInternalServerError)
+			return
+		}
+
+		// Build response combining active config and stats
 		var stats struct {
 			TenantID       string     `json:"tenant_id"`
 			DatasetID      string     `json:"dataset_id"`
@@ -711,51 +746,23 @@ func (api *API) GetTransformationStats() http.HandlerFunc {
 			LastProcessed  *time.Time `json:"last_processed"`
 		}
 
-		// Type assert to PostgreSQLStorage to access DB method
-		psqlStorage, ok := api.Services.Storage.(*storage.PostgreSQLStorage)
-		if !ok {
-			log.Error("Storage is not PostgreSQLStorage")
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
+		stats.TenantID = tenantID
+		stats.DatasetID = datasetID
+
+		// Populate from active transformation if available
+		if activeTransform != nil {
+			stats.Enabled = activeTransform.Enabled
+			stats.FilterCount = len(activeTransform.Filters)
 		}
 
-		err := psqlStorage.GetDB().QueryRowContext(r.Context(), query, tenantID, datasetID).Scan(
-			&stats.TenantID,
-			&stats.DatasetID,
-			&stats.Enabled,
-			&stats.FilterCount,
-			&stats.TotalProcessed,
-			&stats.SuccessCount,
-			&stats.ErrorCount,
-			&stats.SkippedCount,
-			&stats.AvgRowsPerSec,
-			&stats.LastProcessed,
-		)
-
-		if err != nil {
-			if err.Error() == "sql: no rows in result set" {
-				// No stats available yet
-				response := map[string]interface{}{
-					"stats": map[string]interface{}{
-						"tenant_id":        tenantID,
-						"dataset_id":       datasetID,
-						"enabled":          false,
-						"filter_count":     0,
-						"total_processed":  0,
-						"success_count":    0,
-						"error_count":      0,
-						"skipped_count":    0,
-						"avg_rows_per_sec": 0,
-						"last_processed":   nil,
-					},
-				}
-				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(response) // #nosec G104
-				return
-			}
-			log.Errorf("Failed to query transformation stats: %v", err)
-			http.Error(w, "Failed to retrieve stats", http.StatusInternalServerError)
-			return
+		// Populate from latest stats if available
+		if latestStats != nil {
+			stats.TotalProcessed = latestStats.TotalProcessed
+			stats.SuccessCount = latestStats.SuccessCount
+			stats.ErrorCount = latestStats.ErrorCount
+			stats.SkippedCount = latestStats.SkippedCount
+			stats.AvgRowsPerSec = latestStats.AvgRowsPerSec
+			stats.LastProcessed = &latestStats.LastProcessed
 		}
 
 		response := map[string]interface{}{
@@ -970,5 +977,56 @@ func (api *API) GetTransformationHistory() usecase.Interactor {
 		return nil
 	})
 
+	return u
+}
+
+// ReportTransformationStats accepts transformation statistics from piper
+func (api *API) ReportTransformationStats() usecase.Interactor {
+	type Input struct {
+		TenantID       string    `json:"tenant_id" required:"true"`
+		DatasetID      string    `json:"dataset_id" required:"true"`
+		TotalProcessed int64     `json:"total_processed" required:"true"`
+		SuccessCount   int64     `json:"success_count" required:"true"`
+		ErrorCount     int64     `json:"error_count" required:"true"`
+		SkippedCount   int64     `json:"skipped_count" required:"true"`
+		AvgRowsPerSec  float64   `json:"avg_rows_per_sec" required:"true"`
+		LastError      string    `json:"last_error"`
+		LastProcessed  time.Time `json:"last_processed" required:"true"`
+	}
+
+	type Output struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+
+	u := usecase.NewInteractor(func(ctx context.Context, input Input, output *Output) error {
+		// Create stats object
+		stats := &storage.TransformationStats{
+			TenantID:       input.TenantID,
+			DatasetID:      input.DatasetID,
+			TotalProcessed: input.TotalProcessed,
+			SuccessCount:   input.SuccessCount,
+			ErrorCount:     input.ErrorCount,
+			SkippedCount:   input.SkippedCount,
+			AvgRowsPerSec:  input.AvgRowsPerSec,
+			LastError:      input.LastError,
+			LastProcessed:  input.LastProcessed,
+		}
+
+		// Save stats to database
+		if err := api.Services.Storage.SaveTransformationStats(ctx, stats); err != nil {
+			log.Errorf("Failed to save transformation stats for %s/%s: %v", input.TenantID, input.DatasetID, err)
+			return fmt.Errorf("failed to save transformation stats: %w", err)
+		}
+
+		log.Infof("Saved transformation stats for %s/%s (processed: %d, success: %d, error: %d)",
+			input.TenantID, input.DatasetID, input.TotalProcessed, input.SuccessCount, input.ErrorCount)
+
+		output.Success = true
+		output.Message = "Transformation stats saved successfully"
+		return nil
+	})
+
+	u.SetExpectedErrors(usecaseStatus.InvalidArgument)
 	return u
 }

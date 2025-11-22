@@ -168,6 +168,9 @@ func (api *API) NewRouter() *web.Service {
 	// Piper submits schema and samples (service-to-service, requires API key auth)
 	service.Post("/api/v1/tenants/{tenantId}/datasets/{datasetId}/schema", api.SubmitDatasetSchema())
 
+	// Piper submits transformation stats (service-to-service, requires API key auth)
+	service.Post("/api/v1/transformations/stats", api.ReportTransformationStats())
+
 	// User management endpoints
 	service.Get("/api/v1/users", api.ListUsers())
 	service.Get("/api/v1/users/{userId}", api.GetUser())

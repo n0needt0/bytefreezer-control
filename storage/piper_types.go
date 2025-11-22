@@ -52,3 +52,29 @@ type TransformationHistory struct {
 	CreatedBy  string                 `json:"created_by" db:"created_by"`
 	Label      string                 `json:"label" db:"label"`
 }
+
+// ActiveTransformation represents currently active transformation for a dataset
+type ActiveTransformation struct {
+	TenantID    string                   `json:"tenant_id" db:"tenant_id"`
+	DatasetID   string                   `json:"dataset_id" db:"dataset_id"`
+	Enabled     bool                     `json:"enabled" db:"enabled"`
+	Filters     []map[string]interface{} `json:"filters" db:"filters"`
+	Version     string                   `json:"version" db:"version"`
+	ActivatedAt time.Time                `json:"activated_at" db:"activated_at"`
+	UpdatedAt   time.Time                `json:"updated_at" db:"updated_at"`
+}
+
+// TransformationStats represents performance metrics for a transformation
+type TransformationStats struct {
+	ID             int64     `json:"id" db:"id"`
+	TenantID       string    `json:"tenant_id" db:"tenant_id"`
+	DatasetID      string    `json:"dataset_id" db:"dataset_id"`
+	TotalProcessed int64     `json:"total_processed" db:"total_processed"`
+	SuccessCount   int64     `json:"success_count" db:"success_count"`
+	ErrorCount     int64     `json:"error_count" db:"error_count"`
+	SkippedCount   int64     `json:"skipped_count" db:"skipped_count"`
+	AvgRowsPerSec  float64   `json:"avg_rows_per_sec" db:"avg_rows_per_sec"`
+	LastError      string    `json:"last_error" db:"last_error"`
+	LastProcessed  time.Time `json:"last_processed" db:"last_processed"`
+	ReportedAt     time.Time `json:"reported_at" db:"reported_at"`
+}

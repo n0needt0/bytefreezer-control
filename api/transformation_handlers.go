@@ -959,36 +959,30 @@ func (api *API) GetTransformationHistory() usecase.Interactor {
 			limit = 10
 		}
 
-		// Get current active transformation to compare
-		activeTransform, err := api.Services.Storage.GetActiveTransformation(ctx, input.TenantID, input.DatasetID)
-		if err != nil && err != storage.ErrNotFound {
-			log.Errorf("Failed to get active transformation for %s/%s: %v", input.TenantID, input.DatasetID, err)
-			// Continue without active comparison - just set all IsActive to false
-		}
-
 		histories, err := api.Services.Storage.GetTransformationHistory(ctx, input.TenantID, input.DatasetID, limit)
 		if err != nil {
 			log.Errorf("Failed to get transformation history for %s/%s: %v", input.TenantID, input.DatasetID, err)
 			return fmt.Errorf("failed to get transformation history: %w", err)
 		}
 
+		// Find the most recent deployed entry - this is the only one that can be active
+		var mostRecentDeployedID int64
+		for _, h := range histories {
+			if h.Deployed {
+				mostRecentDeployedID = h.ID
+				break // histories are ordered by created_at DESC, so first deployed is most recent
+			}
+		}
+
+		log.Debugf("Most recent deployed ID for %s/%s: %d", input.TenantID, input.DatasetID, mostRecentDeployedID)
+
 		output.History = make([]HistoryItem, 0, len(histories))
 		for _, h := range histories {
-			isActive := false
+			// Only the most recent deployed entry can be active
+			// Don't compare configs - the most recent deployed IS the active one
+			isActive := h.Deployed && h.ID == mostRecentDeployedID
 
-			// Check if this history entry matches the active transformation
-			if activeTransform != nil {
-				// Compare filters and enabled status
-				historyFilters, _ := h.Config["filters"].([]interface{})
-				historyEnabled, _ := h.Config["enabled"].(bool)
-
-				// Simple comparison - if both filters and enabled match, it's active
-				if activeTransform.Enabled == historyEnabled && len(activeTransform.Filters) == len(historyFilters) {
-					// Deep comparison would be better, but for now check length and enabled
-					// If we need exact match, would need to compare filter contents
-					isActive = true
-				}
-			}
+			log.Debugf("History ID %d: deployed=%v, mostRecent=%d, isActive=%v", h.ID, h.Deployed, mostRecentDeployedID, isActive)
 
 			item := HistoryItem{
 				ID:         h.ID,

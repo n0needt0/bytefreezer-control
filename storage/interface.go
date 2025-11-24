@@ -495,6 +495,10 @@ type Storage interface {
 	DeletePiperFilter(ctx context.Context, filterType string) error
 	GetPiperFilterCatalog(ctx context.Context, format string) (interface{}, error) // format: "ui", "ai", or empty for full
 
+	// Service Activity Tracking cleanup operations
+	CleanupOldServiceOperations(ctx context.Context) (int64, error) // 7-day retention for completed/failed operations
+	CleanupOldServiceMetrics(ctx context.Context) (int64, error)    // 30-day retention for metrics rollup
+
 	// Utility operations
 	HealthCheck(ctx context.Context) error
 	Migrate(ctx context.Context) error

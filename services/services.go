@@ -24,6 +24,7 @@ type Services struct {
 	OperationTracking     *OperationTrackingService // Operation/activity tracking service
 	ReceiverThroughput    *ReceiverThroughputService // Receiver throughput tracking service
 	AIPipeline            *AIPipelineService      // AI-assisted pipeline configuration service
+	Enricher              *EnricherService        // Customer enrichment data service
 	Stats                 *ControlStats
 	mutex                 sync.RWMutex
 }
@@ -170,6 +171,10 @@ func NewServices(config *config.Config) *Services {
 				// Initialize receiver throughput service
 				services.ReceiverThroughput = NewReceiverThroughputService(db)
 				log.Info("Receiver throughput service initialized")
+
+				// Initialize enricher service
+				services.Enricher = NewEnricherService(db, services.AuditLog)
+				log.Info("Enricher service initialized")
 
 				// Initialize dataset testing service (periodic testing every 5 minutes)
 				services.DatasetTestingService = NewDatasetTestingService(services.Storage, services.HealthService)

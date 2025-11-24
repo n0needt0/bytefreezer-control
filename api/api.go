@@ -148,6 +148,13 @@ func (api *API) NewRouter() *web.Service {
 	service.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations/history", api.GetTransformationHistory())
 	service.Get("/api/v1/tenants/{tenantId}/datasets/{datasetId}/transformations", api.GetActiveTransformationConfig())
 
+	// Enricher endpoints
+	service.Post("/api/v1/tenants/{tenantId}/enrichers", api.CreateEnricher())
+	service.Get("/api/v1/tenants/{tenantId}/enrichers", api.ListEnrichers())
+	service.Get("/api/v1/tenants/{tenantId}/enrichers/{enricherId}", api.GetEnricher())
+	service.Router.Post("/api/v1/tenants/{tenantId}/enrichers/{enricherId}/upload", api.UploadEnricherData())
+	service.Delete("/api/v1/tenants/{tenantId}/enrichers/{enricherId}", api.DeleteEnricher())
+
 	// Transformation read-only endpoints (proxy to piper - protected with auth and CORS)
 	corsMiddleware := middleware.CORSMiddleware()
 	authMiddleware := middleware.ConditionalJWTAuthMiddleware(api.Config.Auth, api.Services.Auth)
